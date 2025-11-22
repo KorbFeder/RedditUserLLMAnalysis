@@ -1,0 +1,11 @@
+{
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "langchain-docs"
+  ],
+  "permissions": {
+    "allow": [
+      "mcp__langchain-docs__SearchDocsByLangChain"
+    ]
+  }
+}
