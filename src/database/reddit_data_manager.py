@@ -1,4 +1,3 @@
-
 import logging
 from datetime import datetime
 from typing import List, Dict
@@ -10,6 +9,16 @@ logger = logging.getLogger(__name__)
 class DataManager:
     def __init__(self: "DataManager"):
         self.pushpull = PushPullProvider()
+
+    def store_user_data(self: "DataManager", username: str):
+        submissions, comments = self.pushpull.fetch_user_contributions(username)
+        threads = []
+        for submssion in submissions:
+            threads.append(self._convert_thread_to_document(submssion['id']))
+        for comment in comments:
+            threads.append(self._convert_thread_to_document(comment['linked_id']))
+
+            
 
     def _add_comment(self: "DataManager", comment: Dict, document: List[str]):
         document.append("---------------------------------------------")
@@ -44,9 +53,10 @@ class DataManager:
         document.append(f"Created on: {datetime.fromtimestamp(int(submission['created_utc']))}")
         document.append(f"Text of the Post: {submission.get('selftext', '')}")
 
-        document.append(f"============================================")
-        document.append(f"Comments that were posted under the post:")
-        document.append(f"============================================")
+        if len(comments) > 0:
+            document.append(f"============================================")
+            document.append(f"Comments that were posted under the post:")
+            document.append(f"============================================")
 
         root_comment_nr = 1
         for comment in comments:
@@ -65,5 +75,6 @@ class DataManager:
         
 
 
-#a = DataManager()
+a = DataManager()
+a.store_user_data('swintec')
 #b = a._convert_thread_to_document('1h0n5ql')

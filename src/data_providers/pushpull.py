@@ -147,7 +147,7 @@ class PushPullProvider:
 
             time.sleep(1)
 
-        return {"comments": comments, "submissions": submissions}
+        return submissions, comments
 
         
     def search_contribution(        
