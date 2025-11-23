@@ -1,24 +1,32 @@
 import logging
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, TypedDict, Tuple
 
 from src.data_providers.pushpull import PushPullProvider
+from src.database.reddit_store import RedditStore, ThreadMetadata
 
 logger = logging.getLogger(__name__)
+
+ 
 
 class DataManager:
     def __init__(self: "DataManager"):
         self.pushpull = PushPullProvider()
+        self.db = RedditStore()
 
     def store_user_data(self: "DataManager", username: str):
         submissions, comments = self.pushpull.fetch_user_contributions(username)
-        threads = []
         for submssion in submissions:
-            threads.append(self._convert_thread_to_document(submssion['id']))
+            thread_id, document, metadata = self._convert_thread_to_document(submssion['id'])
+            logger.info(f"storeing the full thread with thread id: {thread_id} in the database")
+            self.db.add_thread(thread_id, document, metadata)
         for comment in comments:
-            threads.append(self._convert_thread_to_document(comment['linked_id']))
-
+            thread_id, document, metadata = self._convert_thread_to_document(comment['linked_id'])
+            logger.info(f"storeing the full thread with thread id: {thread_id} in the database")
+            self.db.add_thread(thread_id, document, metadata)
             
+    def search_user_data(self: "DataManager", username: str, search_term):
+        pass
 
     def _add_comment(self: "DataManager", comment: Dict, document: List[str]):
         document.append("---------------------------------------------")
@@ -38,7 +46,7 @@ class DataManager:
             self.iterate_to_leaf(reply['replies'], document, depth + str(i+1) + ".")
 
     
-    def _convert_thread_to_document(self: "DataManager", thread_id: str):
+    def _convert_thread_to_document(self: "DataManager", thread_id: str) -> Tuple[List[str], ThreadMetadata, str]:
         submission, comments = self.pushpull.get_thread(thread_id)
 
         document = []
@@ -69,7 +77,21 @@ class DataManager:
             root_comment_nr += 1
 
         logger.info(f"Converted Post: {submission['title']} ({thread_id}), with all the comments, to a single document")
-        return document
+
+        # Create the Metadata for the RAG DB
+        metadata = ThreadMetadata(
+            id=submission['id'],
+            username=submission['author'],
+            created=int(submission['created_utc']),
+            nr_of_rewards=submission['gilded'],
+            num_comments=submission['num_comments'],
+            url=submission['url'],
+            score=submission['score'],
+            ups=submission['ups'],
+            upvote_ratio=submission['upvote_ratio'],
+            title=submission['title'],
+        )
+        return submission['id'], document, metadata
         
 
         
