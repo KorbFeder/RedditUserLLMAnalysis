@@ -7,34 +7,55 @@ from src.database.reddit_store import RedditStore, ThreadMetadata
 
 logger = logging.getLogger(__name__)
 
- 
-
 class DataManager:
     def __init__(self: "DataManager"):
         self.pushpull = PushPullProvider()
         self.db = RedditStore()
 
-    def store_user_data(self: "DataManager", username: str):
+    def store_user_data(self: "DataManager", username: str, cache: bool = True):
         submissions, comments = self.pushpull.fetch_user_contributions(username)
-        for submssion in submissions:
-            thread_id, document, metadata = self._convert_thread_to_document(submssion['id'])
-            logger.info(f"storeing the full thread with thread id: {thread_id} in the database")
+
+        thread_ids = list(set([submission['id'] for submission in submissions] + [comment['link_id'].removeprefix('t3_') for comment in comments]))
+
+        threads_stored = 0
+
+        # filter existing threads
+        if cache:
+            logger.info("Checking for already existing threads is set to true so only fetching missing ones")
+            logger.info(f"Before filtering for existing threads in the database we have {len(thread_ids)} thread_ids to fetch")
+            thread_ids = self._check_if_thread_already_saved(thread_ids)
+            logger.info(f"After filtering  for existing threads in the database we have {len(thread_ids)} thread_ids to fetch")
+
+        for thread_id in thread_ids:
+            thread = self._convert_thread_to_document(thread_id)
+            if thread == None:
+                logger.info(f"The thread {thread_id} is None!")
+                continue
+
+            document, metadata = thread
+            logger.info(f"Submission/Post {threads_stored} of {len(thread_ids)} sumissions/posts")
+            logger.info(f"storing the full thread with thread id: {thread_id} in the database")
             self.db.add_thread(thread_id, document, metadata)
-        for comment in comments:
-            thread_id, document, metadata = self._convert_thread_to_document(comment['linked_id'])
-            logger.info(f"storeing the full thread with thread id: {thread_id} in the database")
-            self.db.add_thread(thread_id, document, metadata)
+            threads_stored += 1
+ 
+    
+    def _check_if_thread_already_saved(self: "DataManager", thread_ids: List[str]):
+        existing_threads = set(self.db.threads_exist_check(thread_ids))
+        logger.info(f"Found {len(existing_threads)} existing threads in the rag database already")
+        missing_threads = [thread_id for thread_id in thread_ids if thread_id not in existing_threads]
+        return missing_threads
+
             
     def search_user_data(self: "DataManager", username: str, search_term):
         pass
 
     def _add_comment(self: "DataManager", comment: Dict, document: List[str]):
         document.append("---------------------------------------------")
-        document.append(f"Poster/Author/Username: {comment['author']}")
-        document.append(f"The score of the reddit post: {comment['score']} and upvotes {comment['ups']}")
-        document.append(f"Number of rewards: {comment.get('gilded', 0)} with {comment.get('all_awardings', '')}")
-        document.append(f"Created on: {datetime.fromtimestamp(int(comment['created_utc']))}")
-        document.append(f"Comment: {comment['body']}")
+        document.append(f"Poster/Author/Username: {comment.get('author', 'Error')}")
+        document.append(f"The score of the reddit post: {comment.get('score', 'Error')} and upvotes {comment.get('ups', 'Error')}")
+        document.append(f"Number of rewards: {comment.get('gilded', 'Error')} with {comment.get('all_awardings', 'Error')}")
+        document.append(f"Created on: {datetime.fromtimestamp(int(comment.get('created_utc', 0)))}")
+        document.append(f"Comment: {comment.get('body', 'Error')}")
         document.append(f"============================================")
 
 
@@ -46,20 +67,24 @@ class DataManager:
             self.iterate_to_leaf(reply['replies'], document, depth + str(i+1) + ".")
 
     
-    def _convert_thread_to_document(self: "DataManager", thread_id: str) -> Tuple[List[str], ThreadMetadata, str]:
-        submission, comments = self.pushpull.get_thread(thread_id)
+    def _convert_thread_to_document(self: "DataManager", thread_id: str) -> Tuple[List[str], ThreadMetadata]:
+        thread = self.pushpull.get_thread(thread_id)
+        if thread:
+            submission, comments = thread
+        else:
+            return None
 
         document = []
         document.append("POST")
         document.append("---------------------------------------------")
-        document.append(f"Reddit Post Title: {submission['title']} (Post ID: {submission['id']})")
-        document.append(f"Subreddit: {submission['subreddit']}")
-        document.append(f"Poster/Author/Username: {submission['author']}")
-        document.append(f"Reddit Post URL: {submission['url']}")
-        document.append(f"The score of the reddit post: {submission['score']} (upvote ratio: {submission['upvote_ratio']} and upvotes {submission['ups']})")
-        document.append(f"Number of rewards: {submission.get('gilded', 0)} with {submission.get('all_awardings', '')}")
-        document.append(f"Created on: {datetime.fromtimestamp(int(submission['created_utc']))}")
-        document.append(f"Text of the Post: {submission.get('selftext', '')}")
+        document.append(f"Reddit Post Title: {submission.get('title', 'Error')} (Post ID: {submission.get('id', 'Error')})")
+        document.append(f"Subreddit: {submission.get('subreddit', 'Error')}")
+        document.append(f"Poster/Author/Username: {submission.get('author', 'Error')}")
+        document.append(f"Reddit Post URL: {submission.get('url', 'Error')}")
+        document.append(f"The score of the reddit post: {submission.get('score', 'Error')} (upvote ratio: {submission.get('upvote_ratio', 'Error')} and upvotes {submission.get('ups', 'Error')})")
+        document.append(f"Number of rewards: {submission.get('gilded', 'Error')} with {submission.get('all_awardings', 'Error')}")
+        document.append(f"Created on: {datetime.fromtimestamp(int(submission.get('created_utc', 0)))}")
+        document.append(f"Text of the Post: {submission.get('selftext', 'Error')}")
 
         if len(comments) > 0:
             document.append(f"============================================")
@@ -76,25 +101,22 @@ class DataManager:
             
             root_comment_nr += 1
 
-        logger.info(f"Converted Post: {submission['title']} ({thread_id}), with all the comments, to a single document")
+        logger.info(f"Converted Post: {submission.get('title', 'Error')} ({thread_id}), with all the comments, to a single document")
 
         # Create the Metadata for the RAG DB
         metadata = ThreadMetadata(
             id=submission['id'],
-            username=submission['author'],
-            created=int(submission['created_utc']),
-            nr_of_rewards=submission['gilded'],
-            num_comments=submission['num_comments'],
-            url=submission['url'],
-            score=submission['score'],
-            ups=submission['ups'],
-            upvote_ratio=submission['upvote_ratio'],
-            title=submission['title'],
+            username=submission.get('author', 'error'),
+            created=int(submission.get('created_utc', 0)),
+            nr_of_rewards=submission.get('gilded', 0),
+            num_comments=submission.get('num_comments', 0),
+            url=submission.get('url', ''),
+            score=submission.get('score', 0),
+            ups=submission.get('ups', 0),
+            upvote_ratio=submission.get('upvote_ratio', 0.0),
+            title=submission.get('title', ''),
         )
-        return submission['id'], document, metadata
-        
-
-        
+        return document, metadata
 
 
 a = DataManager()

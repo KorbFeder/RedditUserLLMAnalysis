@@ -29,14 +29,19 @@ class PushPullProvider:
             "id": thread_id
         }
         response = requests.get(f"{self.API_URL}/submission/", params)
-        submission = response.json()['data'][0]
+        _submission = response.json().get('data', None)
+    
+        if _submission == None:
+            return None
+        
+        submission = _submission[0]
+
         if len(response.json()['data']) > 1:
-            logger.error("found more then one thread for a unique id")
-            return {}
+            logger.warning(f"Found duplicate entries for thread {thread_id}, using first one")
 
         if response.status_code != 200:
             logger.error(f"Couldn't fetch post request status: {response.status_code}")
-            return {}
+            return None
 
         time.sleep(1)
 
@@ -79,11 +84,22 @@ class PushPullProvider:
         root = []
 
         for comment in comments:
-            parent_id = comment['parent_id'].split('_')[-1]
+            parent_id = comment['parent_id']
+
+            # in case the comment does not have a parent id (faulty or deleted comment)
+            if parent_id == None:
+                root.append(nodes[comment['id']])
+                continue
+
+            parent_id = parent_id.split('_')[-1]
+
             if parent_id == submission_id:
                 root.append(nodes[comment['id']])
-            else:
+            elif parent_id in nodes:
                 nodes[parent_id]['replies'].append(nodes[comment['id']])
+            else:
+                logger.warning(f"The comment {comment['id']} parent {parent_id} could not be found, adding it to root")
+                root.append(nodes[comment['id']])
 
         return root  
 
