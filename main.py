@@ -1,6 +1,7 @@
 from deepagents import create_deep_agent
 import logging
 from dotenv import load_dotenv
+import yaml
 
 load_dotenv()
 
@@ -9,6 +10,11 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+def load_config(config_path="./config/default.yaml"):
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
 
 if __name__ == "__main__":
     create_deep_agent()

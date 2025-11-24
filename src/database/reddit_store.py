@@ -1,4 +1,5 @@
 import chromadb 
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from typing import List, Dict, TypedDict, Tuple, Optional
 
 class ThreadMetadata(TypedDict):
@@ -17,8 +18,14 @@ class RedditStore:
     def __init__(self: "RedditStore"):
         self.db = chromadb.PersistentClient(path="./data/chroma_db")
 
+        self.embedding_function = SentenceTransformerEmbeddingFunction(
+            model_name="nomic-ai/nomic-embed-text-v1.5",
+            trust_remote_code=True
+        )
+
         self.thread_collection = self.db.get_or_create_collection(
-            name="reddit_threads",  # Changed to "threads" since you store full threads
+            name="reddit_threads",  
+            embedding_function=self.embedding_function
         )
 
     def get_thread_count(self: "RedditStore"):
