@@ -84,10 +84,11 @@ class PushPullProvider:
         root = []
 
         for comment in comments:
-            parent_id = comment['parent_id']
+            parent_id = comment.get('parent_id', None)
 
             # in case the comment does not have a parent id (faulty or deleted comment)
-            if parent_id == None:
+            if not parent_id or isinstance(parent_id, int):
+                logger.warning(f"Adding comment {comment['id']} to root, cause parent_id field seems corrupted")
                 root.append(nodes[comment['id']])
                 continue
 
