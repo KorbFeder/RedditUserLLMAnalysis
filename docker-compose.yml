@@ -1,0 +1,16 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: reddit_analysis_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reddit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reddit}
+      POSTGRES_DB: ${POSTGRES_DB:-reddit_analysis}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  pgdata:
