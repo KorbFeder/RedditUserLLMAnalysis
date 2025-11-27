@@ -2,9 +2,9 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE submissions (
     id TEXT PRIMARY KEY,
-    author TEXT NOT NULL,
-    subreddit TEXT NOT NULL,
-    title TEXT NOT NULL,
+    author TEXT,
+    subreddit TEXT,
+    title TEXT,
     selftext TEXT,
     url TEXT,
     score INTEGER,
@@ -20,10 +20,10 @@ CREATE TABLE submissions (
 
 CREATE TABLE comments (
     id TEXT PRIMARY KEY,
-    submission_id TEXT NOT NULL REFERENCES submissions(id),
+    submission_id TEXT REFERENCES submissions(id),
     parent_id TEXT,
-    author TEXT NOT NULL,
-    body TEXT NOT NULL,
+    author TEXT,
+    body TEXT,
     score INTEGER,
     ups INTEGER,
     gilded INTEGER,

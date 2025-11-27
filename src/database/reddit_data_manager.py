@@ -68,6 +68,7 @@ class DataManager:
 
     
     def _convert_thread_to_document(self: "DataManager", thread_id: str) -> Tuple[List[str], ThreadMetadata]:
+        # Try cache first
         thread = self.pushpull.get_thread(thread_id)
         if thread:
             submission, comments = thread
