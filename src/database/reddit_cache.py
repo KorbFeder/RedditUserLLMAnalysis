@@ -1,54 +1,12 @@
 import os
-from sqlalchemy import ForeignKey, func, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, joinedload
-from sqlalchemy.dialects.postgresql import JSONB, insert
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker, joinedload
+from sqlalchemy.dialects.postgresql import insert
 import logging
 
-from datetime import datetime
+from src.models.reddit import Submission, Comment
 
 logger = logging.getLogger(__name__)
-
-class Base(DeclarativeBase):
-    pass
-
-class Submission(Base):
-    __tablename__ = 'submissions'
-    id: Mapped[str] = mapped_column(primary_key=True)
-    author: Mapped[str | None]
-    subreddit: Mapped[str | None]
-    title: Mapped[str | None]
-    selftext: Mapped[str | None]
-    url: Mapped[str | None]
-    score: Mapped[int | None]
-    ups: Mapped[int | None]
-    upvote_ratio: Mapped[float | None]
-    num_comments: Mapped[int | None]
-    gilded: Mapped[int | None]
-    all_awardings: Mapped[list | None] = mapped_column(JSONB)
-    created_utc: Mapped[int]
-    fetched_at: Mapped[datetime] = mapped_column(default=func.now())
-    raw_json: Mapped[dict] = mapped_column(JSONB)
-
-    comments: Mapped[list["Comment"]] = relationship(back_populates="submission")
-
-class Comment(Base):
-    __tablename__ = 'comments'
-    id: Mapped[str] = mapped_column(primary_key=True)
-    submission_id: Mapped[str | None] = mapped_column(ForeignKey('submissions.id'))
-    parent_id: Mapped[str | None]
-    author: Mapped[str | None]
-    body: Mapped[str | None]
-    score: Mapped[int | None]
-    ups: Mapped[int | None]
-    gilded: Mapped[int | None]
-    all_awardings: Mapped[list | None] = mapped_column(JSONB)
-    created_utc: Mapped[int]
-    fetched_at: Mapped[datetime] = mapped_column(default=func.now())
-    raw_json: Mapped[dict] = mapped_column(JSONB)
-
-    submission: Mapped["Submission"] = relationship(back_populates="comments")
-
-
 
 class RedditCache:
     def __init__(self):
