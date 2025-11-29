@@ -7,10 +7,10 @@ class IRedditDataSource(Protocol):
     def source_name(self: "IRedditDataSource") -> str: 
         ...
 
-    def stream_user_submissions(self: "IRedditDataSource", user: str) -> Iterator[list[Submission]]:
+    def stream_user_submissions(self: "IRedditDataSource", username: str) -> Iterator[list[Submission]]:
         ...
 
-    def stream_user_comments(self: "IRedditDataSource", user: str) -> Iterator[list[Comment]]:
+    def stream_user_comments(self: "IRedditDataSource", username: str) -> Iterator[list[Comment]]:
         ...
 
     def stream_submission_comments(self: "IRedditDataSource", submission_id: str) -> Iterator[list[Comment]]:

@@ -1,2 +1,8 @@
 database:
   embedding_model: "nomic-ai/nomic-embed-text-v1.5"
+
+reddit_api:
+  pushpull:
+    rate_limit: 1.0
+    batch_size: 100
+
