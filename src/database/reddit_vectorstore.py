@@ -14,8 +14,8 @@ class ThreadMetadata(TypedDict):
     upvote_ratio: float
     title: str
 
-class RedditStore:
-    def __init__(self: "RedditStore"):
+class RedditVectorstore:
+    def __init__(self: "RedditVectorstore"):
         self.db = chromadb.PersistentClient(path="./data/chroma_db")
 
         self.embedding_function = SentenceTransformerEmbeddingFunction(
@@ -28,10 +28,10 @@ class RedditStore:
             embedding_function=self.embedding_function
         )
 
-    def get_thread_count(self: "RedditStore"):
+    def get_thread_count(self: "RedditVectorstore"):
         return self.thread_collection.count()
 
-    def add_thread(self: "RedditStore", thread_id: str, document: list[str], metadata: ThreadMetadata):
+    def add_thread(self: "RedditVectorstore", thread_id: str, document: list[str], metadata: ThreadMetadata):
         document_text = "\n".join(document)
 
         self.thread_collection.add(
@@ -40,7 +40,7 @@ class RedditStore:
             ids=[thread_id]
         )
 
-    def threads_exist_check(self: "RedditStore", thread_ids: List[str]) -> List[str]:
+    def threads_exist_check(self: "RedditVectorstore", thread_ids: List[str]) -> List[str]:
         if len(thread_ids) == 0:
             return []
 

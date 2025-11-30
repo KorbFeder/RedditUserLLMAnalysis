@@ -4,7 +4,7 @@ from typing import List, Dict, TypedDict, Tuple
 from dataclasses import dataclass, field
 
 from src.database.reddit_repository import RedditRepository
-from src.database.reddit_store import RedditStore, ThreadMetadata
+from database.reddit_vectorstore import RedditVectorstore, ThreadMetadata
 from src.models.reddit import Submission, Comment
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class CommentNode:
 class DataManager:
     def __init__(self: "DataManager", config: dict):
         self.reddit_repo = RedditRepository(config)
-        self.db = RedditStore()
+        self.db = RedditVectorstore()
 
     def store_user_data(self: "DataManager", username: str):
         submissions, comments = self.reddit_repo.get_user_contributions(username)
