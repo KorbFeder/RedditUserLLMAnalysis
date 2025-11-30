@@ -16,7 +16,7 @@ class RedditRepository:
     def __init__(self: "RedditRepository", config: dict):
         self.cache = RedditCache()
         self.push_pull = PushPullProvider(config)
-        self.use_cache = config['use_cache']
+        self.use_cache = CacheConfig(config['use_cache'])
 
     def get_user_contributions(self: "RedditRepository", username: str) -> tuple[list[Submission], list[Comment]]: 
         # check cache

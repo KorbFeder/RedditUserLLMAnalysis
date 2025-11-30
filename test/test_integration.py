@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
-from src.database.reddit_repository import RedditRepository, CacheConfig
+from src.database.reddit_repository import RedditRepository
 from src.database.reddit_cache import RedditCache
 from src.data_providers.pushpull_provider import PushPullProvider
 from src.models.reddit import Submission, Comment
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_test_config(cache_mode: int = 0) -> dict:
-    """Create test config with specified cache mode."""
+    """Create test config with specified cache mode (0=DEFAULT, 1=NO_CACHE, 2=CACHE_ONLY)."""
     return {
         'reddit_api': {
             'pushpull': {
@@ -133,17 +133,18 @@ class TestRedditRepository(unittest.TestCase):
     """Test the repository layer with different cache modes."""
 
     def test_no_cache_mode_small_fetch(self):
-        """Test fetching without cache."""
+        """Test fetching without cache using swintec (known small user)."""
         config = get_test_config(cache_mode=1)  # NO_CACHE
         repo = RedditRepository(config)
 
-        # Fetch a small amount of data
-        submissions, comments = repo.get_user_contributions('AutoModerator')
+        # Use swintec - the user already tested in main.py
+        submissions, comments = repo.get_user_contributions('swintec')
 
-        # AutoModerator has lots of posts, we should get some
         logger.info(f"NO_CACHE mode: Got {len(submissions)} submissions, {len(comments)} comments")
 
         # Verify data structure
+        self.assertIsInstance(submissions, list)
+        self.assertIsInstance(comments, list)
         if submissions:
             self.assertIsInstance(submissions[0], Submission)
         if comments:
@@ -151,10 +152,10 @@ class TestRedditRepository(unittest.TestCase):
 
     def test_get_thread(self):
         """Test fetching a complete thread."""
-        config = get_test_config(cache_mode=1)  # NO_CACHE for clean test
+        config = get_test_config(cache_mode=1)  # NO_CACHE
         repo = RedditRepository(config)
 
-        # Fetch a known thread
+        # Fetch a known thread (swintec's post)
         result = repo.get_thread('1h0n5ql')
 
         if result:
@@ -171,7 +172,7 @@ class TestDataIntegrity(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.config = get_test_config(cache_mode=1)
+        cls.config = get_test_config(cache_mode=1)  # NO_CACHE
         cls.provider = PushPullProvider(cls.config)
 
     def test_comment_has_required_fields(self):
@@ -213,25 +214,38 @@ class TestCacheIntegration(unittest.TestCase):
 
     def test_cache_stores_and_retrieves(self):
         """Test that data is properly cached and retrieved."""
-        # First, clear any existing test data by using a unique test
-        config_no_cache = get_test_config(cache_mode=1)
-        config_with_cache = get_test_config(cache_mode=0)
-
-        repo_no_cache = RedditRepository(config_no_cache)
+        config_with_cache = get_test_config(cache_mode=0)  # DEFAULT
         repo_with_cache = RedditRepository(config_with_cache)
 
         # Fetch with cache enabled (will populate cache)
-        logger.info("Fetching with cache enabled...")
-        subs1, coms1 = repo_with_cache.get_user_contributions('AutoModerator')
+        logger.info("Fetching swintec with cache enabled...")
+        subs1, coms1 = repo_with_cache.get_user_contributions('swintec')
         logger.info(f"First fetch: {len(subs1)} subs, {len(coms1)} comments")
 
-        # Fetch again with cache (should use cached data)
+        # Fetch again with cache (should use cached data + any new)
         logger.info("Fetching again with cache...")
-        subs2, coms2 = repo_with_cache.get_user_contributions('AutoModerator')
+        subs2, coms2 = repo_with_cache.get_user_contributions('swintec')
         logger.info(f"Second fetch: {len(subs2)} subs, {len(coms2)} comments")
 
         # Second fetch should have same or more data (cached + any new)
         self.assertGreaterEqual(len(subs2), len(subs1) - 10, "Cache should retain data")
+
+    def test_cache_only_mode(self):
+        """Test fetching only from cache."""
+        # First populate cache
+        config_default = get_test_config(cache_mode=0)  # DEFAULT
+        repo_default = RedditRepository(config_default)
+        subs1, coms1 = repo_default.get_user_contributions('swintec')
+        logger.info(f"Populated cache: {len(subs1)} subs, {len(coms1)} comments")
+
+        # Now fetch with CACHE_ONLY
+        config_cache_only = get_test_config(cache_mode=2)  # CACHE_ONLY
+        repo_cache_only = RedditRepository(config_cache_only)
+        subs2, coms2 = repo_cache_only.get_user_contributions('swintec')
+        logger.info(f"Cache only fetch: {len(subs2)} subs, {len(coms2)} comments")
+
+        # Should get same data from cache
+        self.assertEqual(len(subs1), len(subs2), "Cache should return same submissions")
 
 
 if __name__ == '__main__':
