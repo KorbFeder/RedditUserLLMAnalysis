@@ -2,29 +2,22 @@ import logging
 from datetime import datetime
 from typing import List, Dict, TypedDict, Tuple
 
-from src.data_providers.pushpull import PushPullProvider
+from src.database.reddit_repository import RedditRepository
 from src.database.reddit_store import RedditStore, ThreadMetadata
 
 logger = logging.getLogger(__name__)
 
 class DataManager:
     def __init__(self: "DataManager"):
-        self.pushpull = PushPullProvider()
+        self.reddit_repo = RedditRepository()
         self.db = RedditStore()
 
     def store_user_data(self: "DataManager", username: str, cache: bool = True):
-        submissions, comments = self.pushpull.fetch_user_contributions(username)
+        submissions, comments = self.reddit_repo.get_user_contributions(username)
 
-        thread_ids = list(set([submission['id'] for submission in submissions] + [comment['link_id'].removeprefix('t3_') for comment in comments]))
+        thread_ids = list(set([submission['id'] for submission in submissions] + [comment['link_id'] for comment in comments]))
 
         threads_stored = 0
-
-        # filter existing threads
-        if cache:
-            logger.info("Checking for already existing threads is set to true so only fetching missing ones")
-            logger.info(f"Before filtering for existing threads in the database we have {len(thread_ids)} thread_ids to fetch")
-            thread_ids = self._check_if_thread_already_saved(thread_ids)
-            logger.info(f"After filtering  for existing threads in the database we have {len(thread_ids)} thread_ids to fetch")
 
         for thread_id in thread_ids:
             thread = self._convert_thread_to_document(thread_id)

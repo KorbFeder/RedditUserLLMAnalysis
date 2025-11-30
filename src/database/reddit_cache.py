@@ -38,11 +38,34 @@ class RedditCache:
         query = select(Submission).where(Submission.id.in_(ids))
         return self.session.scalars(query).all()
 
+    def get_submission(self: "RedditCache", id: str) -> Submission | None:
+        return self.session.get(Submission, id)
+
+
     def get_comments(self: "RedditCache", ids: list[str]) -> list[Comment]:
         if not ids:
             return []
 
         query = select(Comment).where(Comment.id.in_(ids))
+        return self.session.scalars(query).all()
+
+    def get_comment(self: "RedditCache", id: str) -> Comment | None:
+        return self.session.get(Comment, id)
+
+    def get_users_submissions(self: "RedditCache", username: str) -> list[Submission]:
+        query = (
+            select(Submission)
+            .where(Submission.author == username)
+            .order_by(Submission.created_utc.desc())
+        )
+        return self.session.scalars(query).all()
+
+    def get_users_comments(self: "RedditCache", username: list[str]) -> list[Comment]:
+        query = (
+            select(Comment)
+            .where(Comment.author == username)
+            .order_by(Comment.created_utc.desc())
+        )
         return self.session.scalars(query).all()
 
     def get_submission_comments(self, submission_id: str) -> list[Comment]:
