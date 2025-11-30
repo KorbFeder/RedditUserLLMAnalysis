@@ -20,7 +20,7 @@ CREATE TABLE submissions (
 
 CREATE TABLE comments (
     id TEXT PRIMARY KEY,
-    submission_id TEXT REFERENCES submissions(id),
+    submission_id TEXT,
     parent_id TEXT,
     author TEXT,
     body TEXT,

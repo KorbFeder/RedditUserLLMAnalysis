@@ -6,4 +6,5 @@ reddit_api:
     rate_limit: 1.0
     batch_size: 100
 
-use_cache: True
+# 0 is both the api and the cache are used, 1 only the api and 2 only the cache
+use_cache: 0 

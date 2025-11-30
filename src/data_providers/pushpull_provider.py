@@ -15,7 +15,7 @@ class PushPullProvider:
 
     def __init__(self: "PushPullProvider", config: dict):
         pushpull_config = config['reddit_api']['pushpull']
-        self.rate_limit: float = pushpull_config['ratelimit']
+        self.rate_limit: float = pushpull_config['rate_limit']
         self.batch_size: int = pushpull_config['batch_size']
     
     @property
@@ -47,8 +47,6 @@ class PushPullProvider:
         count = 0
 
         while True:
-            logger.info(f"currently {count} fetched")
-
             current_submissions = self.api_request('submission', params).get('data', [])
 
             if not current_submissions:
@@ -57,6 +55,7 @@ class PushPullProvider:
             params["before"] = int(current_submissions[-1]["created_utc"]) - 1
             count += len(current_submissions)
 
+            logger.info(f"Fetched {count} submissions for a user")
             yield [self._to_submission(submission) for submission in current_submissions]
 
     def stream_user_comments(self: "PushPullProvider", username: str) -> Iterator[list[Comment]]:
@@ -71,7 +70,6 @@ class PushPullProvider:
         count = 0
 
         while True:
-            logger.info(f"currently {count} fetched")
 
             current_comments = self.api_request('comment', params).get('data', [])
 
@@ -81,6 +79,7 @@ class PushPullProvider:
             params["before"] = int(current_comments[-1]["created_utc"]) - 1
             count += len(current_comments)
 
+            logger.info(f"Fetched {count} comments for a user")
             yield [self._to_comment(comment) for comment in current_comments]
 
 
@@ -96,7 +95,6 @@ class PushPullProvider:
         count = 0
 
         while True:
-            logger.info(f"currently {count} fetched")
 
             current_comments = self.api_request('comment', params).get('data', [])
 
@@ -106,6 +104,7 @@ class PushPullProvider:
             params["before"] = int(current_comments[-1]["created_utc"]) - 1
             count += len(current_comments)
 
+            logger.info(f"Fetched {count} comments from a submission")
             yield [self._to_comment(comment) for comment in current_comments]
 
 
@@ -123,7 +122,7 @@ class PushPullProvider:
 
 
     def _strip_prefix(self: "PushPullProvider", reddit_id: str | None) -> str | None:
-        if not reddit_id:
+        if not isinstance(reddit_id, str):
             return None
         return reddit_id.split('_')[-1]
 

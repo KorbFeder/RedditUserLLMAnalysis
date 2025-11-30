@@ -4,7 +4,7 @@ from typing import List, Dict, TypedDict, Tuple
 from dataclasses import dataclass, field
 
 from src.database.reddit_repository import RedditRepository
-from database.reddit_vectorstore import RedditVectorstore, ThreadMetadata
+from src.database.reddit_vectorstore import RedditVectorstore, ThreadMetadata
 from src.models.reddit import Submission, Comment
 
 logger = logging.getLogger(__name__)
@@ -22,9 +22,9 @@ class DataManager:
     def store_user_data(self: "DataManager", username: str):
         submissions, comments = self.reddit_repo.get_user_contributions(username)
 
-        thread_ids = list(set(
-            [submission.id for submission in submissions] + 
-            [comment.submission_id for comment in comments]
+        thread_ids = list(dict.fromkeys(
+            [submission.id for submission in submissions] +
+            [comment.submission_id for comment in comments if comment.submission_id]
         ))
 
         threads_stored = 0
@@ -97,16 +97,17 @@ class DataManager:
         # Create the Metadata for the RAG DB
         metadata = ThreadMetadata(
             id=submission.id,
-            username=submission.author,
-            created=int(submission.created_utc),
-            nr_of_rewards=submission.gilded,
-            num_comments=submission.num_comments,
-            url=submission.url,
-            score=submission.score,
-            ups=submission.ups,
-            upvote_ratio=submission.upvote_ratio,
-            title=submission.title,
+            username=submission.author or "",
+            created=int(submission.created_utc or 0),
+            nr_of_rewards=submission.gilded or 0,
+            num_comments=submission.num_comments or 0,
+            url=submission.url or "",
+            score=submission.score or 0,
+            ups=submission.ups or 0,
+            upvote_ratio=submission.upvote_ratio or 0.0,
+            title=submission.title or "",
         )
+
         return document, metadata
 
     def _order_comments(self: "DataManager", submission_id: str, comments: list[Comment]) -> list[CommentNode]:

@@ -20,16 +20,38 @@ class RedditCache:
     def add_submissions(self: "RedditCache", submissions: list[Submission]) -> None:
         if not submissions:
             return
-        
-        self.session.add_all(submissions)
-        self.session.commit()
+
+        comment_ids = [submission.id for submission in submissions]
+        existing_ids = self.submissions_exist(comment_ids)
+
+        # Filter to only new comments
+        new_submissions = [submission for submission in submissions if submission.id not in existing_ids]
+
+        if new_submissions:
+            self.session.add_all(new_submissions)
+            self.session.commit()
+
+        logger.info(f"Added {len(submissions)} to the database (submission table)")
 
     def add_comments(self: "RedditCache", comments: list[Comment]) -> None:
         if not comments:
             return
-            
-        self.session.add_all(comments)
-        self.session.commit()
+
+        # Deduplicate input by ID first
+        comments_by_id = {c.id: c for c in comments}
+        unique_comments = list(comments_by_id.values())
+
+        # Force fresh read from database
+        self.session.expire_all()
+
+        existing_ids = self.comments_exist([c.id for c in unique_comments])
+        new_comments = [c for c in unique_comments if c.id not in existing_ids]
+
+        if new_comments:
+            self.session.add_all(new_comments)
+            self.session.commit()
+
+        logger.info(f"Added {len(comments)} to the database (comment table)")
 
     def get_submissions(self: "RedditCache", ids: list[str]) -> list[Submission]:
         if not ids:

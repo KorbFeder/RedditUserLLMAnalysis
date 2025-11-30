@@ -1,10 +1,16 @@
 import logging
+from enum import Enum
 
 from src.database.reddit_cache import RedditCache
 from src.data_providers.pushpull_provider import PushPullProvider
 from src.models.reddit import Submission, Comment
 
 logger = logging.getLogger(__name__)
+
+class CacheConfig(Enum):
+    DEFAULT = 0
+    NO_CACHE = 1 
+    CACHE_ONLY = 2
 
 class RedditRepository:
     def __init__(self: "RedditRepository", config: dict):
@@ -14,21 +20,17 @@ class RedditRepository:
 
     def get_user_contributions(self: "RedditRepository", username: str) -> tuple[list[Submission], list[Comment]]: 
         # check cache
-        if self.use_cache:
+        if self.use_cache == CacheConfig.DEFAULT:
             cached_comments = self.cache.get_users_comments(username)
             cached_submissions = self.cache.get_users_submissions(username)
 
             latest_sub_id = cached_submissions[0].id if cached_submissions else None
             latest_com_id = cached_comments[0].id if cached_comments else None
-        else:
-            latest_sub_id = None
-            latest_com_id = None
  
-        # fetch the freshest data until we either have overlap with the cache or we have all the data
-        new_submissions = self._fetch_new_submissions(username, latest_sub_id)
-        new_comments = self._fetch_new_comments_from_username(username, latest_com_id)
+            # fetch the freshest data until we either have overlap with the cache or we have all the data
+            new_submissions = self._fetch_new_submissions(username, latest_sub_id)
+            new_comments = self._fetch_new_comments_from_username(username, latest_com_id)
 
-        if self.use_cache:
             # cache the new contributions
             if new_submissions:
                 self.cache.add_submissions(new_submissions)
@@ -36,14 +38,23 @@ class RedditRepository:
                 self.cache.add_comments(new_comments)
 
             return new_submissions + cached_submissions, new_comments + cached_comments
+        elif self.use_cache == CacheConfig.NO_CACHE:
+            new_submissions = self._fetch_new_submissions(username, None)
+            new_comments = self._fetch_new_comments_from_username(username, None)
+            return new_submissions, new_comments
 
-        return new_submissions, new_comments
+        elif self.use_cache == CacheConfig.CACHE_ONLY:
+            cached_comments = self.cache.get_users_comments(username)
+            cached_submissions = self.cache.get_users_submissions(username)
+
+
+            return cached_submissions, cached_comments
 
 
     def get_thread(self: "RedditRepository", submission_id: str) -> tuple[Submission, list[Comment]] | None:
         cached_comments = []
 
-        if self.use_cache:
+        if self.use_cache == CacheConfig.DEFAULT:
             submission = self.cache.get_submission(submission_id)
             cached_comments = self.cache.get_submission_comments(submission_id)
 
@@ -61,9 +72,12 @@ class RedditRepository:
             if new_comments:
                 self.cache.add_comments(new_comments)
             
-        else:
+        elif self.use_cache == CacheConfig.NO_CACHE:
             submission = self.push_pull.fetch_submission(submission_id)
             new_comments = self._fetch_new_comments_from_submission(submission_id, None)
+        elif self.use_cache == CacheConfig.CACHE_ONLY:
+            submission = self.cache.get_submission(submission_id)
+            new_comments = self.cache.get_submission_comments(submission_id)
 
         return submission, new_comments + cached_comments
 
