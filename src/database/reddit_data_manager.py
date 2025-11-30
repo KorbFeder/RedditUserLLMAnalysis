@@ -1,118 +1,137 @@
 import logging
 from datetime import datetime
 from typing import List, Dict, TypedDict, Tuple
+from dataclasses import dataclass, field
 
 from src.database.reddit_repository import RedditRepository
 from src.database.reddit_store import RedditStore, ThreadMetadata
+from src.models.reddit import Submission, Comment
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class CommentNode:
+    comment: Comment
+    replies: list["CommentNode"] = field(default_factory=list)
+
 class DataManager:
-    def __init__(self: "DataManager"):
-        self.reddit_repo = RedditRepository()
+    def __init__(self: "DataManager", config: dict):
+        self.reddit_repo = RedditRepository(config)
         self.db = RedditStore()
 
-    def store_user_data(self: "DataManager", username: str, cache: bool = True):
+    def store_user_data(self: "DataManager", username: str):
         submissions, comments = self.reddit_repo.get_user_contributions(username)
 
-        thread_ids = list(set([submission['id'] for submission in submissions] + [comment['link_id'] for comment in comments]))
+        thread_ids = list(set(
+            [submission.id for submission in submissions] + 
+            [comment.submission_id for comment in comments]
+        ))
 
         threads_stored = 0
 
         for thread_id in thread_ids:
-            thread = self._convert_thread_to_document(thread_id)
-            if thread == None:
+            thread = self.reddit_repo.get_thread(thread_id)
+
+            if thread is None:
                 logger.info(f"The thread {thread_id} is None!")
                 continue
 
-            document, metadata = thread
+            submission, comments = thread
+            document, metadata = self._convert_thread_to_document(submission, comments)
+
             logger.info(f"Submission/Post {threads_stored} of {len(thread_ids)} sumissions/posts")
             logger.info(f"storing the full thread with thread id: {thread_id} in the database")
             self.db.add_thread(thread_id, document, metadata)
             threads_stored += 1
  
     
-    def _check_if_thread_already_saved(self: "DataManager", thread_ids: List[str]):
-        existing_threads = set(self.db.threads_exist_check(thread_ids))
-        logger.info(f"Found {len(existing_threads)} existing threads in the rag database already")
-        missing_threads = [thread_id for thread_id in thread_ids if thread_id not in existing_threads]
-        return missing_threads
-
-            
     def search_user_data(self: "DataManager", username: str, search_term):
         pass
 
-    def _add_comment(self: "DataManager", comment: Dict, document: List[str]):
+    def _add_comment(self: "DataManager", node: CommentNode, document: List[str]):
+        comment = node.comment
         document.append("---------------------------------------------")
-        document.append(f"Poster/Author/Username: {comment.get('author', 'Error')}")
-        document.append(f"The score of the reddit post: {comment.get('score', 'Error')} and upvotes {comment.get('ups', 'Error')}")
-        document.append(f"Number of rewards: {comment.get('gilded', 'Error')} with {comment.get('all_awardings', 'Error')}")
-        document.append(f"Created on: {datetime.fromtimestamp(int(comment.get('created_utc', 0)))}")
-        document.append(f"Comment: {comment.get('body', 'Error')}")
+        document.append(f"Poster/Author/Username: {comment.author}")
+        document.append(f"The score of the reddit post: {comment.score} and upvotes {comment.ups}")
+        document.append(f"Number of rewards: {comment.gilded} with {comment.all_awardings}")
+        document.append(f"Created on: {datetime.fromtimestamp(int(comment.created_utc))}")
+        document.append(f"Comment: {comment.body}")
         document.append(f"============================================")
 
 
-    def iterate_to_leaf(self: "DataManager", replies: List[Dict], document: List[str], depth: str):
-        for i, reply in enumerate(replies):
-            document.append(f"{depth}{str(i+1)}. Reply")
-            self._add_comment(reply, document)
+    def _iterate_to_leaf(self: "DataManager", nodes: List[CommentNode], document: List[str], depth: str):
+        for i, node in enumerate(nodes, 1):
+            document.append(f"{depth}{str(i)}. Reply")
+            self._add_comment(node, document)
 
-            self.iterate_to_leaf(reply['replies'], document, depth + str(i+1) + ".")
+            self._iterate_to_leaf(node.replies, document, f"{depth}{i}.")
 
     
-    def _convert_thread_to_document(self: "DataManager", thread_id: str) -> Tuple[List[str], ThreadMetadata]:
-        # Try cache first
-        thread = self.pushpull.get_thread(thread_id)
-        if thread:
-            submission, comments = thread
-        else:
-            return None
+    def _convert_thread_to_document(self: "DataManager", submission: Submission, comments: list[Comment]) -> Tuple[List[str], ThreadMetadata]:
+        comments_tree = self._order_comments(submission.id, comments)
 
         document = []
         document.append("POST")
         document.append("---------------------------------------------")
-        document.append(f"Reddit Post Title: {submission.get('title', 'Error')} (Post ID: {submission.get('id', 'Error')})")
-        document.append(f"Subreddit: {submission.get('subreddit', 'Error')}")
-        document.append(f"Poster/Author/Username: {submission.get('author', 'Error')}")
-        document.append(f"Reddit Post URL: {submission.get('url', 'Error')}")
-        document.append(f"The score of the reddit post: {submission.get('score', 'Error')} (upvote ratio: {submission.get('upvote_ratio', 'Error')} and upvotes {submission.get('ups', 'Error')})")
-        document.append(f"Number of rewards: {submission.get('gilded', 'Error')} with {submission.get('all_awardings', 'Error')}")
-        document.append(f"Created on: {datetime.fromtimestamp(int(submission.get('created_utc', 0)))}")
-        document.append(f"Text of the Post: {submission.get('selftext', 'Error')}")
+        document.append(f"Reddit Post Title: {submission.title} (Post ID: {submission.id})")
+        document.append(f"Subreddit: {submission.subreddit}")
+        document.append(f"Poster/Author/Username: {submission.author}")
+        document.append(f"Reddit Post URL: {submission.url}")
+        document.append(f"The score of the reddit post: {submission.score} (upvote ratio: {submission.upvote_ratio} and upvotes {submission.ups})")
+        document.append(f"Number of rewards: {submission.gilded} with {submission.all_awardings}")
+        document.append(f"Created on: {datetime.fromtimestamp(int(submission.created_utc))}")
+        document.append(f"Text of the Post: {submission.selftext}")
 
         if len(comments) > 0:
             document.append(f"============================================")
             document.append(f"Comments that were posted under the post:")
             document.append(f"============================================")
 
-        root_comment_nr = 1
-        for comment in comments:
+        for i, node in enumerate(comments_tree, 1):
+            document.append(f"{i}. Reply")
+            self._add_comment(node, document)
+            self._iterate_to_leaf(node.replies, document, f"{i}.")
 
-            document.append(f"{root_comment_nr}. Reply")
-            self._add_comment(comment, document)
- 
-            self.iterate_to_leaf(comment["replies"], document, f"{root_comment_nr}.")
-            
-            root_comment_nr += 1
-
-        logger.info(f"Converted Post: {submission.get('title', 'Error')} ({thread_id}), with all the comments, to a single document")
+        logger.info(f"Converted Post: {submission.title} ({submission.id}), with all the comments, to a single document")
 
         # Create the Metadata for the RAG DB
         metadata = ThreadMetadata(
-            id=submission['id'],
-            username=submission.get('author', 'error'),
-            created=int(submission.get('created_utc', 0)),
-            nr_of_rewards=submission.get('gilded', 0),
-            num_comments=submission.get('num_comments', 0),
-            url=submission.get('url', ''),
-            score=submission.get('score', 0),
-            ups=submission.get('ups', 0),
-            upvote_ratio=submission.get('upvote_ratio', 0.0),
-            title=submission.get('title', ''),
+            id=submission.id,
+            username=submission.author,
+            created=int(submission.created_utc),
+            nr_of_rewards=submission.gilded,
+            num_comments=submission.num_comments,
+            url=submission.url,
+            score=submission.score,
+            ups=submission.ups,
+            upvote_ratio=submission.upvote_ratio,
+            title=submission.title,
         )
         return document, metadata
 
+    def _order_comments(self: "DataManager", submission_id: str, comments: list[Comment]) -> list[CommentNode]:
+        nodes = {c.id: CommentNode(comment=c) for c in comments}
+        root = []
 
-a = DataManager()
-a.store_user_data('swintec')
+        for comment in comments:
+            parent_id = comment.parent_id
+
+            # in case the comment does not have a parent id (faulty or deleted comment)
+            if not parent_id or isinstance(parent_id, int):
+                logger.warning(f"Adding comment {comment.id} to root, cause parent_id field seems corrupted")
+                root.append(nodes[comment.id])
+                continue
+
+            if parent_id == submission_id:
+                root.append(nodes[comment.id])
+            elif parent_id in nodes:
+                nodes[parent_id].replies.append(nodes[comment.id])
+            else:
+                logger.warning(f"The comment {comment.id} parent {parent_id} could not be found, adding it to root")
+                root.append(nodes[comment.id])
+
+        return root  
+
+#a = DataManager()
+#a.store_user_data('swintec')
 #b = a._convert_thread_to_document('1h0n5ql')

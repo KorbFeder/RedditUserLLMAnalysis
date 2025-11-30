@@ -6,3 +6,4 @@ reddit_api:
     rate_limit: 1.0
     batch_size: 100
 
+use_cache: True
