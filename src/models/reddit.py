@@ -1,9 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, MappedAsDataclass
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, MappedAsDataclass
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import ForeignKey, func
-from typing import Optional
+from sqlalchemy import func
 
 class Base(MappedAsDataclass, DeclarativeBase):
     pass

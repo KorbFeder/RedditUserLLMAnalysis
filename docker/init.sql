@@ -33,6 +33,13 @@ CREATE TABLE comments (
     raw_json JSONB NOT NULL
 );
 
+CREATE TABLE thread_fetch_state (
+    submission_id VARCHAR PRIMARY KEY,
+    is_complete BOOLEAN DEFAULT FALSE NOT NULL,
+    oldest_comment_timestamp INTEGER,
+    completed_at TIMESTAMP
+);
+
 CREATE INDEX idx_submissions_author ON submissions(author);
 CREATE INDEX idx_submissions_subreddit ON submissions(subreddit);
 CREATE INDEX idx_submissions_created_utc ON submissions(created_utc);

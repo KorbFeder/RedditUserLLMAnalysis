@@ -11,6 +11,7 @@ class CacheConfig(Enum):
     DEFAULT = 0
     NO_CACHE = 1 
     CACHE_ONLY = 2
+    FULL_SAVE = 3
 
 class RedditRepository:
     def __init__(self: "RedditRepository", config: dict):
@@ -46,9 +47,18 @@ class RedditRepository:
         elif self.use_cache == CacheConfig.CACHE_ONLY:
             cached_comments = self.cache.get_users_comments(username)
             cached_submissions = self.cache.get_users_submissions(username)
-
-
             return cached_submissions, cached_comments
+
+        elif self.use_cache == CacheConfig.FULL_SAVE:
+            new_submissions = self._fetch_new_submissions(username, None)
+            new_comments = self._fetch_new_comments_from_username(username, None)
+
+            if new_submissions:
+                self.cache.add_submissions(new_submissions)
+            if new_comments:
+                self.cache.add_comments(new_comments)
+ 
+            return new_submissions, new_comments
 
 
     def get_thread(self: "RedditRepository", submission_id: str) -> tuple[Submission, list[Comment]] | None:
@@ -78,6 +88,14 @@ class RedditRepository:
         elif self.use_cache == CacheConfig.CACHE_ONLY:
             submission = self.cache.get_submission(submission_id)
             new_comments = self.cache.get_submission_comments(submission_id)
+        elif self.use_cache == CacheConfig.FULL_SAVE:
+            submission = self.push_pull.fetch_submission(submission_id)
+            new_comments = self._fetch_new_comments_from_submission(submission_id, None)
+
+            self.cache.add_submissions([submission])
+            if new_comments:
+                self.cache.add_comments(new_comments)
+ 
 
         return submission, new_comments + cached_comments
 
