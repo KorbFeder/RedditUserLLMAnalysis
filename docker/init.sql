@@ -13,7 +13,7 @@ CREATE TABLE submissions (
     num_comments INTEGER,
     gilded INTEGER,
     all_awardings JSONB,
-    created_utc BIGINT NOT NULL,
+    created_utc BIGINT,
     fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     raw_json JSONB NOT NULL
 );
@@ -28,16 +28,21 @@ CREATE TABLE comments (
     ups INTEGER,
     gilded INTEGER,
     all_awardings JSONB,
-    created_utc BIGINT NOT NULL,
+    created_utc BIGINT,
     fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     raw_json JSONB NOT NULL
 );
 
-CREATE TABLE thread_fetch_state (
-    submission_id VARCHAR PRIMARY KEY,
-    is_complete BOOLEAN DEFAULT FALSE NOT NULL,
-    oldest_comment_timestamp INTEGER,
-    completed_at TIMESTAMP
+CREATE TABLE thread_cache_status (
+    submission_id TEXT PRIMARY KEY,
+    newest_item_cursor BIGINT,
+    is_history_complete BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE user_contribution_cache_status (
+    username TEXT PRIMARY KEY,
+    newest_submission_cursor BIGINT,
+    newest_comment_cursor BIGINT
 );
 
 CREATE INDEX idx_submissions_author ON submissions(author);

@@ -54,7 +54,7 @@ class DataManager:
         document.append(f"Poster/Author/Username: {comment.author}")
         document.append(f"The score of the reddit post: {comment.score} and upvotes {comment.ups}")
         document.append(f"Number of rewards: {comment.gilded} with {comment.all_awardings}")
-        document.append(f"Created on: {datetime.fromtimestamp(int(comment.created_utc))}")
+        document.append(f"Created on: {datetime.fromtimestamp(int(comment.created_utc or 0))}")
         document.append(f"Comment: {comment.body}")
         document.append(f"============================================")
 
@@ -79,7 +79,7 @@ class DataManager:
         document.append(f"Reddit Post URL: {submission.url}")
         document.append(f"The score of the reddit post: {submission.score} (upvote ratio: {submission.upvote_ratio} and upvotes {submission.ups})")
         document.append(f"Number of rewards: {submission.gilded} with {submission.all_awardings}")
-        document.append(f"Created on: {datetime.fromtimestamp(int(submission.created_utc))}")
+        document.append(f"Created on: {datetime.fromtimestamp(int(submission.created_utc or 0))}")
         document.append(f"Text of the Post: {submission.selftext}")
 
         if len(comments) > 0:

@@ -1,9 +1,12 @@
 import os
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
 import logging
 
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.dialects.postgresql import insert
+
 from src.models.reddit import Submission, Comment
+from src.models.cache import UserContributionCacheStatus, ThreadCacheStatus
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,14 @@ class RedditCache:
 
         logger.info(f"Added {len(comments)} to the database (comment table)")
 
+    def upsert_thread_cache_status(self: "RedditCache", thread_cache_status: ThreadCacheStatus):
+        self.session.merge(thread_cache_status)
+        self.session.commit()
+
+    def upsert_user_cache_status(self: "RedditCache", status: UserContributionCacheStatus):
+        self.session.merge(status)
+        self.session.commit()
+
     def get_submissions(self: "RedditCache", ids: list[str]) -> list[Submission]:
         if not ids:
             return []
@@ -82,7 +93,7 @@ class RedditCache:
         )
         return self.session.scalars(query).all()
 
-    def get_users_comments(self: "RedditCache", username: list[str]) -> list[Comment]:
+    def get_users_comments(self: "RedditCache", username: str) -> list[Comment]:
         query = (
             select(Comment)
             .where(Comment.author == username)
@@ -94,6 +105,12 @@ class RedditCache:
         query = select(Comment).where(Comment.submission_id == submission_id)
         return list(self.session.scalars(query).all())
 
+    def get_user_cache_status(self: "RedditCache", username: str):
+        return self.session.get(UserContributionCacheStatus, username)
+
+    def get_thread_cache_status(self: "RedditCache", submission_id: str):
+        return self.session.get(ThreadCacheStatus, submission_id)
+ 
     def submissions_exist(self, ids: list[str]) -> set[str]:
         if not ids:
             return set()
@@ -107,6 +124,7 @@ class RedditCache:
 
         query = select(Comment.id).where(Comment.id.in_(ids))
         return set(self.session.scalars(query).all())
-   
+
+
     def close(self: "RedditCache"):
         self.session.close()
