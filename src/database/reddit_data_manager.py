@@ -37,11 +37,11 @@ class DataManager:
                 continue
 
             submission, comments = thread
-            document, metadata = self._convert_thread_to_document(submission, comments)
+            #document, metadata = self._convert_thread_to_document(submission, comments)
 
             logger.info(f"Submission/Post {threads_stored} of {len(thread_ids)} sumissions/posts")
             logger.info(f"storing the full thread with thread id: {thread_id} in the database")
-            self.db.add_thread(thread_id, document, metadata)
+            #self.db.add_thread(thread_id, document, metadata)
             threads_stored += 1
  
     

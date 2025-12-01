@@ -22,9 +22,12 @@ class RedditRepository:
 
     def get_user_contributions(self: "RedditRepository", username: str) -> tuple[list[Submission], list[Comment]]: 
         # check cache
+        logging.info(f"Using {self.use_cache.name}")
         if self.use_cache == CacheConfig.DEFAULT:
-            cached_comments = self.cache.get_users_comments(username)
             cached_submissions = self.cache.get_users_submissions(username)
+            cached_comments = self.cache.get_users_comments(username)
+
+            logger.info(f"Found {len(cached_submissions)} submissions and {len(cached_comments)} comments in cache")
 
             # Get the current state of the cache
             status = self.cache.get_user_cache_status(username)
@@ -32,6 +35,8 @@ class RedditRepository:
             # fetch the freshest data until we either have overlap with the cache or we have all the data
             new_submissions = self._fetch_new_submissions(username, status.newest_submission_cursor if status else None)
             new_comments = self._fetch_new_comments_from_username(username, status.newest_comment_cursor if status else None)
+
+            logger.info(f"Fetched {len(new_submissions)} submission and {len(new_comments)} from the api")
 
             # cache the new contributions
             if new_submissions:
@@ -96,6 +101,7 @@ class RedditRepository:
             # if is_history_complete is not True or we dont have a status for the cache yet, 
             # then we need to fully fetch the whole thread
             if status is None or not status.is_history_complete:
+                logger.info(f"The thread {submission_id} is not in the cache, fetching is completely")
                 new_comments = self._fetch_new_comments_from_submission(submission_id, None)
 
                 if new_comments:
@@ -107,6 +113,7 @@ class RedditRepository:
                     is_history_complete=True
                 ))
             else:
+                logger.info(f"The thread {submission_id} is already fully fetched in the cache just checking for updates")
                 new_comments = self._fetch_new_comments_from_submission(submission_id, status.newest_item_cursor)
 
                 if new_comments:
