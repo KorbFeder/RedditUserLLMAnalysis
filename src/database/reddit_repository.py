@@ -20,6 +20,22 @@ class RedditRepository:
         self.push_pull = PushPullProvider(config)
         self.use_cache = CacheConfig(config['use_cache'])
 
+    def get_submission(self: "RedditRepository", id: str) -> Submission | None:
+        submission = self.cache.get_submission(id)
+        if submission:
+            return submission
+        submission = self.push_pull.fetch_submission(id)
+        if submission: 
+            return submission
+
+    def get_comment(self: "RedditRepository", id: str) -> Comment | None:
+        comment = self.cache.get_comment(id)
+        if comment:
+            return comment
+        comment = self.push_pull.fetch_comment(id)
+        if comment: 
+            return comment
+
     def get_user_contributions(self: "RedditRepository", username: str) -> tuple[list[Submission], list[Comment]]: 
         # check cache
         logging.info(f"Using {self.use_cache.name}")

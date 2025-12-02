@@ -21,5 +21,5 @@ def load_config(config_path="./config/default.yaml"):
 if __name__ == "__main__":
     config = load_config()
     dm = DataManager(config)
-    dm.store_user_data('swintec')
+    dm.fill_vector_db('swintec')
 

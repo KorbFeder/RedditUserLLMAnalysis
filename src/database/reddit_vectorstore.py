@@ -28,22 +28,21 @@ class RedditVectorstore:
             embedding_function=self.embedding_function
         )
 
-    def get_thread_count(self: "RedditVectorstore"):
+    def get_element_count(self: "RedditVectorstore"):
         return self.thread_collection.count()
 
-    def add_thread(self: "RedditVectorstore", thread_id: str, document: list[str], metadata: ThreadMetadata):
-        document_text = "\n".join(document)
+    def add_elements(self: "RedditVectorstore", ids: list[str], documents: list[str], metadatas: list[dict]):
+        if len(ids) > 0:
+            self.thread_collection.add(
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids
+            )
 
-        self.thread_collection.add(
-            documents=[document_text],
-            metadatas=[metadata],
-            ids=[thread_id]
-        )
-
-    def threads_exist_check(self: "RedditVectorstore", thread_ids: List[str]) -> List[str]:
-        if len(thread_ids) == 0:
+    def elements_exist_check(self: "RedditVectorstore", ids: list[str]) -> List[str]:
+        if len(ids) == 0:
             return []
 
-        existing_ids = self.thread_collection.get(ids=thread_ids, include=[])
+        existing_ids = self.thread_collection.get(ids=ids, include=[])
         return existing_ids['ids']
 

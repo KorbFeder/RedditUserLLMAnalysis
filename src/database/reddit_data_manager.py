@@ -1,23 +1,20 @@
 import logging
 from datetime import datetime
-from typing import List, Dict, TypedDict, Tuple
-from dataclasses import dataclass, field
+from dataclasses import asdict
+from tqdm import tqdm
 
 from src.database.reddit_repository import RedditRepository
-from src.database.reddit_vectorstore import RedditVectorstore, ThreadMetadata
+from src.database.reddit_vectorstore import RedditVectorstore
 from src.models.reddit import Submission, Comment
+from src.database.rag.small_to_large_chunking import SmallToLargeDocumentBuilder, SmallToLargeMetadata, StlDocumentType
 
 logger = logging.getLogger(__name__)
-
-@dataclass
-class CommentNode:
-    comment: Comment
-    replies: list["CommentNode"] = field(default_factory=list)
 
 class DataManager:
     def __init__(self: "DataManager", config: dict):
         self.reddit_repo = RedditRepository(config)
         self.db = RedditVectorstore()
+        self.small_to_large = SmallToLargeDocumentBuilder()
 
     def store_user_data(self: "DataManager", username: str):
         submissions, comments = self.reddit_repo.get_user_contributions(username)
@@ -36,103 +33,96 @@ class DataManager:
                 logger.info(f"The thread {thread_id} is None!")
                 continue
 
-            submission, comments = thread
-            #document, metadata = self._convert_thread_to_document(submission, comments)
 
             logger.info(f"Submission/Post {threads_stored} of {len(thread_ids)} sumissions/posts")
             logger.info(f"storing the full thread with thread id: {thread_id} in the database")
-            #self.db.add_thread(thread_id, document, metadata)
             threads_stored += 1
  
     
-    def search_user_data(self: "DataManager", username: str, search_term):
-        pass
+    def fill_vector_db(self: "DataManager", username: str):
+        submissions, comments = self.reddit_repo.get_user_contributions(username)
 
-    def _add_comment(self: "DataManager", node: CommentNode, document: List[str]):
-        comment = node.comment
-        document.append("---------------------------------------------")
-        document.append(f"Poster/Author/Username: {comment.author}")
-        document.append(f"The score of the reddit post: {comment.score} and upvotes {comment.ups}")
-        document.append(f"Number of rewards: {comment.gilded} with {comment.all_awardings}")
-        document.append(f"Created on: {datetime.fromtimestamp(int(comment.created_utc or 0))}")
-        document.append(f"Comment: {comment.body}")
-        document.append(f"============================================")
+        # filter out submission already stored in the vector db
+        existing_ids = set(self.db.elements_exist_check([s.id for s in submissions]))
+        submissions = [submission for submission in submissions if submission.id not in existing_ids]
+        logger.info(f"Skipping {len(existing_ids)} existing, inserting {len(submissions)} new submissions")
 
+        id_batch = []
+        doc_batch = []
+        metadata_batch = []
+        logger.info(f"Fetched Submissions and Comment now filling Vector database with {len(submissions)} submissions and {len(comments)} comments")
+        for submission in tqdm(submissions):
+            doc = self.small_to_large.submission(submission)
+            metadata = SmallToLargeMetadata(
+                id=submission.id,
+                document_type=StlDocumentType.SUBMISSION.value,
+                submission_id=submission.id,
+                parent_id="",
+                username=username,
+                parent_author="",
+                subreddit=submission.subreddit or "",
+                post_title=submission.title or "",
+                created_utc=submission.created_utc or 0,
+                score=submission.score or 0,
+                is_top_level=False,
+                num_comments=submission.num_comments or 0,
+                upvote_ratio=submission.upvote_ratio or 0.0
+            )
+            id_batch.append(submission.id)
+            doc_batch.append("\n".join(doc))
+            metadata_batch.append(asdict(metadata))
 
-    def _iterate_to_leaf(self: "DataManager", nodes: List[CommentNode], document: List[str], depth: str):
-        for i, node in enumerate(nodes, 1):
-            document.append(f"{depth}{str(i)}. Reply")
-            self._add_comment(node, document)
+        before = self.db.get_element_count()
+        self.db.add_elements(id_batch, doc_batch, metadata_batch)
+        after = self.db.get_element_count()
 
-            self._iterate_to_leaf(node.replies, document, f"{depth}{i}.")
+        logger.info("Added all submissions to the vector database moving on to comments")
+        logger.info(f"Nr of elements in vectordb before: {before} and now afterwards: {after}")
 
-    
-    def _convert_thread_to_document(self: "DataManager", submission: Submission, comments: list[Comment]) -> Tuple[List[str], ThreadMetadata]:
-        comments_tree = self._order_comments(submission.id, comments)
+        # filter comments
+        existing_ids = set(self.db.elements_exist_check([c.id for c in comments]))
+        comments = [comment for comment in comments if comment.id not in existing_ids]
+        logger.info(f"Skipping {len(existing_ids)} existing, inserting {len(comments)} new comments")
 
-        document = []
-        document.append("POST")
-        document.append("---------------------------------------------")
-        document.append(f"Reddit Post Title: {submission.title} (Post ID: {submission.id})")
-        document.append(f"Subreddit: {submission.subreddit}")
-        document.append(f"Poster/Author/Username: {submission.author}")
-        document.append(f"Reddit Post URL: {submission.url}")
-        document.append(f"The score of the reddit post: {submission.score} (upvote ratio: {submission.upvote_ratio} and upvotes {submission.ups})")
-        document.append(f"Number of rewards: {submission.gilded} with {submission.all_awardings}")
-        document.append(f"Created on: {datetime.fromtimestamp(int(submission.created_utc or 0))}")
-        document.append(f"Text of the Post: {submission.selftext}")
+        id_batch = []
+        doc_batch = []
+        metadata_batch = []
 
-        if len(comments) > 0:
-            document.append(f"============================================")
-            document.append(f"Comments that were posted under the post:")
-            document.append(f"============================================")
+        submission_ids = list(set(c.submission_id for c in comments if c.submission_id))
+        submissions = {s.id: s for s in self.reddit_repo.cache.get_submissions(submission_ids)}
+        parent_ids = [c.parent_id for c in comments if c.parent_id]
+        parent_comments = {c.id: c for c in self.reddit_repo.cache.get_comments(parent_ids)}
 
-        for i, node in enumerate(comments_tree, 1):
-            document.append(f"{i}. Reply")
-            self._add_comment(node, document)
-            self._iterate_to_leaf(node.replies, document, f"{i}.")
-
-        logger.info(f"Converted Post: {submission.title} ({submission.id}), with all the comments, to a single document")
-
-        # Create the Metadata for the RAG DB
-        metadata = ThreadMetadata(
-            id=submission.id,
-            username=submission.author or "",
-            created=int(submission.created_utc or 0),
-            nr_of_rewards=submission.gilded or 0,
-            num_comments=submission.num_comments or 0,
-            url=submission.url or "",
-            score=submission.score or 0,
-            ups=submission.ups or 0,
-            upvote_ratio=submission.upvote_ratio or 0.0,
-            title=submission.title or "",
-        )
-
-        return document, metadata
-
-    def _order_comments(self: "DataManager", submission_id: str, comments: list[Comment]) -> list[CommentNode]:
-        nodes = {c.id: CommentNode(comment=c) for c in comments}
-        root = []
-
-        for comment in comments:
-            parent_id = comment.parent_id
-
-            # in case the comment does not have a parent id (faulty or deleted comment)
-            if not parent_id or isinstance(parent_id, int):
-                logger.warning(f"Adding comment {comment.id} to root, cause parent_id field seems corrupted")
-                root.append(nodes[comment.id])
+        for comment in tqdm(comments):
+            parent_comment = parent_comments.get(comment.parent_id)
+            submission =  submissions.get(comment.submission_id)
+            
+            if submission is None:
+                logger.warning(f"Could not find submission {comment.submission_id} for comment {comment.id}")
                 continue
 
-            if parent_id == submission_id:
-                root.append(nodes[comment.id])
-            elif parent_id in nodes:
-                nodes[parent_id].replies.append(nodes[comment.id])
-            else:
-                logger.warning(f"The comment {comment.id} parent {parent_id} could not be found, adding it to root")
-                root.append(nodes[comment.id])
+            # maybe a batch fetch here cause of speed
+            doc = self.small_to_large.comment(submission, comment, parent_comment)
 
-        return root  
+            metadata = SmallToLargeMetadata(
+                id=comment.id,
+                document_type=StlDocumentType.COMMENT.value,
+                submission_id=submission.id,
+                parent_id=comment.parent_id or "",
+                username=username,
+                parent_author=parent_comment.author if parent_comment else "",
+                subreddit=submission.subreddit or "",
+                post_title=submission.title or "",
+                created_utc=comment.created_utc or 0,
+                score=comment.score or 0,
+                is_top_level=False if parent_comment else True,
+                num_comments=0,
+                upvote_ratio=0.0
+            )           
+            id_batch.append(comment.id)
+            doc_batch.append("\n".join(doc))
+            metadata_batch.append(asdict(metadata))
 
-#a = DataManager()
-#a.store_user_data('swintec')
-#b = a._convert_thread_to_document('1h0n5ql')
+        self.db.add_elements(id_batch, doc_batch, metadata_batch)
+        
+

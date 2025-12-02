@@ -108,6 +108,18 @@ class PushPullProvider:
             yield [self._to_comment(comment) for comment in current_comments]
 
 
+    def fetch_comment(self: "PushPullProvider", comment_id: str) -> Submission | None:
+        params = {'id': comment_id}
+
+        _comment = self.api_request('comment', params).get('data', [])
+
+        if not _comment:
+            return None
+
+        comment = _comment[0]
+
+        return self._to_comment(comment)
+
     def fetch_submission(self: "PushPullProvider", submission_id: str) -> Submission | None:
         params = {'id': submission_id}
 
@@ -141,7 +153,7 @@ class PushPullProvider:
             num_comments=submission.get('num_comments'),
             gilded=submission.get('gilded'),
             all_awardings=submission.get('all_awardings'),
-            created_utc=submission.get('created_utc') 
+            created_utc=int(submission['created_utc']) if submission.get('created_utc') is not None else None
         )
 
     def _to_comment(self: "PushPullProvider", comment: dict) -> Comment:
@@ -156,5 +168,5 @@ class PushPullProvider:
             ups=comment.get('ups'),
             gilded=comment.get('gilded'),
             all_awardings=comment.get('all_awardings'),
-            created_utc=comment.get('created_utc')
+            created_utc=int(comment['created_utc']) if comment.get('created_utc') is not None else None
         )

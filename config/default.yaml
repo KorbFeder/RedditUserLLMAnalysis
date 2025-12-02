@@ -3,8 +3,8 @@ database:
 
 reddit_api:
   pushpull:
-    rate_limit: 1.0
+    rate_limit: 0.3
     batch_size: 100
 
 # 0 is both the api and the cache are used, 1 only the api and 2 only the cache
-use_cache: 0 
+use_cache: 2 
