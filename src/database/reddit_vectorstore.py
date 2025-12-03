@@ -1,18 +1,9 @@
 import chromadb 
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from typing import List, Dict, TypedDict, Tuple, Optional
-
-class ThreadMetadata(TypedDict):
-    id: str
-    username: str
-    created: int
-    nr_of_rewards: int
-    num_comments: int
-    url: str
-    score: int
-    ups: int
-    upvote_ratio: float
-    title: str
+import logging
+ 
+logger = logging.getLogger(__name__)
 
 class RedditVectorstore:
     def __init__(self: "RedditVectorstore"):
@@ -27,6 +18,12 @@ class RedditVectorstore:
             name="reddit_threads",  
             embedding_function=self.embedding_function
         )
+
+    def query_user_content(self: "RedditVectorstore", query_text: str, username: str, n_results: int = 10) -> dict:
+        logger.info(f"Query for Rag: {query_text}")
+        response = self.thread_collection.query(query_texts=[query_text], n_results=n_results, where={"username": username})
+        logger.info(f"Rag response {response}")
+        return response
 
     def get_element_count(self: "RedditVectorstore"):
         return self.thread_collection.count()

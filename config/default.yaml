@@ -1,6 +1,8 @@
 database:
   embedding_model: "nomic-ai/nomic-embed-text-v1.5"
 
+llm_model_name: "z-ai/glm-4.5-air:free"
+
 reddit_api:
   pushpull:
     rate_limit: 0.3
