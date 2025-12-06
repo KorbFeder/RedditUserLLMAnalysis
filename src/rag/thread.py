@@ -1,10 +1,9 @@
 from datetime import datetime
 import logging
 
-from src.models.reddit import Comment, Submission
-from src.database.rag.order_comments import CommentNode
-from src.database.reddit_vectorstore import ThreadMetadata
-from src.database.rag.order_comments import order_comments
+from src.storage.models import Comment, Submission
+from src.rag.tree import CommentNode, order_comments
+# Note: ThreadMetadata was removed - this file may be deprecated
 
 logger = logging.getLogger(__name__)
 

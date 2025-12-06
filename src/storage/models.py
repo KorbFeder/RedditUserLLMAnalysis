@@ -43,3 +43,19 @@ class Comment(Base):
     created_utc: Mapped[int | None] = mapped_column(default=None)
 
     fetched_at: Mapped[datetime] = mapped_column(default=func.now(), init=False) 
+
+class UserContributionCacheStatus(Base):
+    __tablename__ = 'user_contribution_cache_status'
+    username: Mapped[str] = mapped_column(primary_key=True)
+    newest_submission_cursor: Mapped[int | None] = mapped_column(default=None)
+    newest_comment_cursor: Mapped[int | None] = mapped_column(default=None)
+
+
+class ThreadCacheStatus(Base):
+    __tablename__ = 'thread_cache_status'
+    submission_id: Mapped[str] = mapped_column(primary_key=True)
+    newest_item_cursor: Mapped[int | None] = mapped_column(default=None)
+    is_history_complete: Mapped[bool] = mapped_column(default=False)
+
+
+

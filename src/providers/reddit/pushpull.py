@@ -4,22 +4,22 @@ import logging
 from typing import Iterator
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from src.models.reddit import Submission, Comment
+from src.storage.models import Submission, Comment
 
 logger = logging.getLogger(__name__)
 
-class PushPullProvider:
-    """Implements IRedditDataSource for the PullPush.io API"""
+class PullPushClient:
+    """Implements RedditSource for the PullPush.io API"""
 
     API_URL = "https://api.pullpush.io/reddit/search"
 
-    def __init__(self: "PushPullProvider", config: dict):
+    def __init__(self: "PullPushClient", config: dict):
         pushpull_config = config['reddit_api']['pushpull']
         self.rate_limit: float = pushpull_config['rate_limit']
         self.batch_size: int = pushpull_config['batch_size']
     
     @property
-    def source_name(self: "PushPullProvider") -> str: 
+    def source_name(self: "PullPushClient") -> str: 
         return "pushpull"
     
     @retry(          
@@ -27,7 +27,7 @@ class PushPullProvider:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type(requests.RequestException)
     )
-    def api_request(self: "PushPullProvider", endpoint: str, params: dict):
+    def api_request(self: "PullPushClient", endpoint: str, params: dict):
         response = requests.get(f"{self.API_URL}/{endpoint}/", params=params)
         response.raise_for_status()
 
@@ -35,7 +35,7 @@ class PushPullProvider:
 
         return response.json()
 
-    def stream_user_submissions(self: "PushPullProvider", username: str) -> Iterator[list[Submission]]:
+    def stream_user_submissions(self: "PullPushClient", username: str) -> Iterator[list[Submission]]:
         params = {
           "author": username,
           "size": self.batch_size,
@@ -58,7 +58,7 @@ class PushPullProvider:
             logger.info(f"Fetched {count} submissions for a user")
             yield [self._to_submission(submission) for submission in current_submissions]
 
-    def stream_user_comments(self: "PushPullProvider", username: str) -> Iterator[list[Comment]]:
+    def stream_user_comments(self: "PullPushClient", username: str) -> Iterator[list[Comment]]:
         params = {
           "author": username,
           "size": self.batch_size,
@@ -83,7 +83,7 @@ class PushPullProvider:
             yield [self._to_comment(comment) for comment in current_comments]
 
 
-    def stream_submission_comments(self: "PushPullProvider", submission_id: str) -> Iterator[list[Comment]]:
+    def stream_submission_comments(self: "PullPushClient", submission_id: str) -> Iterator[list[Comment]]:
         params = {
           "link_id": submission_id,
           "size": self.batch_size,
@@ -108,7 +108,7 @@ class PushPullProvider:
             yield [self._to_comment(comment) for comment in current_comments]
 
 
-    def fetch_comment(self: "PushPullProvider", comment_id: str) -> Submission | None:
+    def fetch_comment(self: "PullPushClient", comment_id: str) -> Submission | None:
         params = {'id': comment_id}
 
         _comment = self.api_request('comment', params).get('data', [])
@@ -120,7 +120,7 @@ class PushPullProvider:
 
         return self._to_comment(comment)
 
-    def fetch_submission(self: "PushPullProvider", submission_id: str) -> Submission | None:
+    def fetch_submission(self: "PullPushClient", submission_id: str) -> Submission | None:
         params = {'id': submission_id}
 
         _submission = self.api_request('submission', params).get('data', [])
@@ -132,13 +132,25 @@ class PushPullProvider:
 
         return self._to_submission(submission)
 
+    def fetch_bulk(self, ids: list[str]) -> tuple[list[Submission], list[Comment]]:
+        # Fallback: fetch one by one (slow)
+        submissions, comments = [], []
+        for id in ids:
+            if id.startswith("t3_"):
+                sub = self.fetch_submission(id[3:])
+                if sub: submissions.append(sub)
+            elif id.startswith("t1_"):
+                com = self.fetch_comment(id[3:])
+                if com: comments.append(com)
+        return submissions, comments
 
-    def _strip_prefix(self: "PushPullProvider", reddit_id: str | None) -> str | None:
+
+    def _strip_prefix(self: "PullPushClient", reddit_id: str | None) -> str | None:
         if not isinstance(reddit_id, str):
             return None
         return reddit_id.split('_')[-1]
 
-    def _to_submission(self: "PushPullProvider", submission: dict) -> Submission:
+    def _to_submission(self: "PullPushClient", submission: dict) -> Submission:
         return Submission(
             id=submission["id"],
             raw_json=submission,
@@ -156,7 +168,7 @@ class PushPullProvider:
             created_utc=int(submission['created_utc']) if submission.get('created_utc') is not None else None
         )
 
-    def _to_comment(self: "PushPullProvider", comment: dict) -> Comment:
+    def _to_comment(self: "PullPushClient", comment: dict) -> Comment:
         return Comment(
             id=comment["id"],
             raw_json=comment,

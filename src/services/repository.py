@@ -1,10 +1,9 @@
 import logging
 from enum import Enum
 
-from src.database.reddit_cache import RedditCache
-from src.data_providers.pushpull_provider import PushPullProvider
-from src.models.reddit import Submission, Comment
-from src.models.cache import UserContributionCacheStatus, ThreadCacheStatus
+from src.storage.postgres import PostgresStore
+from src.providers.reddit.pushpull import PullPushClient
+from src.storage.models import Submission, Comment, UserContributionCacheStatus, ThreadCacheStatus
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +13,13 @@ class CacheConfig(Enum):
     CACHE_ONLY = 2
     FULL_SAVE = 3
 
-class RedditRepository:
-    def __init__(self: "RedditRepository", config: dict):
-        self.cache = RedditCache()
-        self.push_pull = PushPullProvider(config)
+class Repository:
+    def __init__(self: "Repository", config: dict):
+        self.cache = PostgresStore()
+        self.push_pull = PullPushClient(config)
         self.use_cache = CacheConfig(config['use_cache'])
 
-    def get_submission(self: "RedditRepository", id: str) -> Submission | None:
+    def get_submission(self: "Repository", id: str) -> Submission | None:
         submission = self.cache.get_submission(id)
         if submission:
             return submission
@@ -28,7 +27,7 @@ class RedditRepository:
         if submission: 
             return submission
 
-    def get_comment(self: "RedditRepository", id: str) -> Comment | None:
+    def get_comment(self: "Repository", id: str) -> Comment | None:
         comment = self.cache.get_comment(id)
         if comment:
             return comment
@@ -36,7 +35,7 @@ class RedditRepository:
         if comment: 
             return comment
 
-    def get_user_contributions(self: "RedditRepository", username: str) -> tuple[list[Submission], list[Comment]]: 
+    def get_user_contributions(self: "Repository", username: str) -> tuple[list[Submission], list[Comment]]: 
         # check cache
         logging.info(f"Using {self.use_cache.name}")
         if self.use_cache == CacheConfig.DEFAULT:
@@ -98,7 +97,7 @@ class RedditRepository:
             return new_submissions, new_comments
 
 
-    def get_thread(self: "RedditRepository", submission_id: str) -> tuple[Submission, list[Comment]] | None:
+    def get_thread(self: "Repository", submission_id: str) -> tuple[Submission, list[Comment]] | None:
         cached_comments = []
 
         if self.use_cache == CacheConfig.DEFAULT:
@@ -176,7 +175,7 @@ class RedditRepository:
         return submission, new_comments + cached_comments
 
 
-    def _fetch_new_submissions(self: "RedditRepository", username: str, stop_at_timestamp: int | None) -> list[Submission]:
+    def _fetch_new_submissions(self: "Repository", username: str, stop_at_timestamp: int | None) -> list[Submission]:
         new_submissions = []
         for current_submission in self.push_pull.stream_user_submissions(username):
             for sub in current_submission:
@@ -185,7 +184,7 @@ class RedditRepository:
                 new_submissions.append(sub)
         return new_submissions
     
-    def _fetch_new_comments_from_username(self: "RedditRepository", username: str, stop_at_timestamp: int | None) -> list[Comment]:
+    def _fetch_new_comments_from_username(self: "Repository", username: str, stop_at_timestamp: int | None) -> list[Comment]:
         new_comments = []
         for current_comment in self.push_pull.stream_user_comments(username):
             for com in current_comment:
@@ -194,7 +193,7 @@ class RedditRepository:
                 new_comments.append(com)
         return new_comments
 
-    def _fetch_new_comments_from_submission(self: "RedditRepository", submission_id: str, stop_at_timestamp: int | None) -> list[Comment]:
+    def _fetch_new_comments_from_submission(self: "Repository", submission_id: str, stop_at_timestamp: int | None) -> list[Comment]:
         new_comments = []
         for current_comment in self.push_pull.stream_submission_comments(submission_id):
             for com in current_comment:

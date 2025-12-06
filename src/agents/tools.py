@@ -1,5 +1,5 @@
 from langchain.tools import tool
-from src.database.reddit_vectorstore import RedditVectorstore
+from src.storage.chroma import VectorStore
 
 @tool
 def search_users_reddit_contributions(username: str, search_term: str, n_results: int = 20):
@@ -13,5 +13,5 @@ def search_users_reddit_contributions(username: str, search_term: str, n_results
     Returns:
         Dict with matching documents from the user's Reddit history
     """
-    rag = RedditVectorstore()
+    rag = VectorStore()
     return rag.query_user_content(search_term, username, n_results)

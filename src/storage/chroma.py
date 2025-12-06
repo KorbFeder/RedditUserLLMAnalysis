@@ -5,8 +5,8 @@ import logging
  
 logger = logging.getLogger(__name__)
 
-class RedditVectorstore:
-    def __init__(self: "RedditVectorstore"):
+class VectorStore:
+    def __init__(self: "VectorStore"):
         self.db = chromadb.PersistentClient(path="./data/chroma_db")
 
         self.embedding_function = SentenceTransformerEmbeddingFunction(
@@ -19,16 +19,16 @@ class RedditVectorstore:
             embedding_function=self.embedding_function
         )
 
-    def query_user_content(self: "RedditVectorstore", query_text: str, username: str, n_results: int = 10) -> dict:
+    def query_user_content(self: "VectorStore", query_text: str, username: str, n_results: int = 10) -> dict:
         logger.info(f"Query for Rag: {query_text}")
         response = self.thread_collection.query(query_texts=[query_text], n_results=n_results, where={"username": username})
         logger.info(f"Rag response {response}")
         return response
 
-    def get_element_count(self: "RedditVectorstore"):
+    def get_element_count(self: "VectorStore"):
         return self.thread_collection.count()
 
-    def add_elements(self: "RedditVectorstore", ids: list[str], documents: list[str], metadatas: list[dict]):
+    def add_elements(self: "VectorStore", ids: list[str], documents: list[str], metadatas: list[dict]):
         if len(ids) > 0:
             self.thread_collection.add(
                 documents=documents,
@@ -36,7 +36,7 @@ class RedditVectorstore:
                 ids=ids
             )
 
-    def elements_exist_check(self: "RedditVectorstore", ids: list[str]) -> List[str]:
+    def elements_exist_check(self: "VectorStore", ids: list[str]) -> List[str]:
         if len(ids) == 0:
             return []
 

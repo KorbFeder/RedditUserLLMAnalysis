@@ -8,13 +8,13 @@ This system analyzes Reddit users by fetching their complete contribution histor
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   PullPush API  │────▶│  RedditRepository │────▶│   DataManager   │
+│   PullPush API  │────▶│  Repository │────▶│   Vectorizer   │
 │ (api.pullpush.io)│     │  (Orchestration)  │     │ (Document Gen)  │
 └─────────────────┘     └────────┬─────────┘     └────────┬────────┘
                                  │                        │
                                  ▼                        ▼
                         ┌────────────────┐       ┌────────────────┐
-                        │  RedditCache   │       │ RedditVectorstore│
+                        │  PostgresStore   │       │ VectorStore│
                         │  (PostgreSQL)  │       │   (ChromaDB)   │
                         └────────────────┘       └────────────────┘
 ```
@@ -187,11 +187,11 @@ def stream_user_comments(username):
 
 | Component | Responsibility |
 |-----------|---------------|
-| `PushPullProvider` | API client, pagination, rate limiting |
-| `RedditRepository` | Cache logic, fetch orchestration, mode handling |
-| `RedditCache` | Database operations, UPSERT logic |
-| `DataManager` | High-level workflows, document generation |
-| `RedditVectorstore` | Embedding storage and retrieval |
+| `PullPushClient` | API client, pagination, rate limiting |
+| `Repository` | Cache logic, fetch orchestration, mode handling |
+| `PostgresStore` | Database operations, UPSERT logic |
+| `Vectorizer` | High-level workflows, document generation |
+| `VectorStore` | Embedding storage and retrieval |
 
 ## Configuration
 

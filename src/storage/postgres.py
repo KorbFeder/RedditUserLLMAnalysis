@@ -5,12 +5,11 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert
 
-from src.models.reddit import Submission, Comment
-from src.models.cache import UserContributionCacheStatus, ThreadCacheStatus
+from src.storage.models import Submission, Comment, UserContributionCacheStatus, ThreadCacheStatus
 
 logger = logging.getLogger(__name__)
 
-class RedditCache:
+class PostgresStore:
     def __init__(self):
         url = os.getenv('DATABASE_URL')
         if not url:
@@ -20,7 +19,7 @@ class RedditCache:
         Session = sessionmaker(bind=engine)
         self.session = Session()
 
-    def add_submissions(self: "RedditCache", submissions: list[Submission]) -> None:
+    def add_submissions(self: "PostgresStore", submissions: list[Submission]) -> None:
         if not submissions:
             return
 
@@ -36,7 +35,7 @@ class RedditCache:
 
         logger.info(f"Added {len(submissions)} to the database (submission table)")
 
-    def add_comments(self: "RedditCache", comments: list[Comment]) -> None:
+    def add_comments(self: "PostgresStore", comments: list[Comment]) -> None:
         if not comments:
             return
 
@@ -56,36 +55,36 @@ class RedditCache:
 
         logger.info(f"Added {len(comments)} to the database (comment table)")
 
-    def upsert_thread_cache_status(self: "RedditCache", thread_cache_status: ThreadCacheStatus):
+    def upsert_thread_cache_status(self: "PostgresStore", thread_cache_status: ThreadCacheStatus):
         self.session.merge(thread_cache_status)
         self.session.commit()
 
-    def upsert_user_cache_status(self: "RedditCache", status: UserContributionCacheStatus):
+    def upsert_user_cache_status(self: "PostgresStore", status: UserContributionCacheStatus):
         self.session.merge(status)
         self.session.commit()
 
-    def get_submissions(self: "RedditCache", ids: list[str]) -> list[Submission]:
+    def get_submissions(self: "PostgresStore", ids: list[str]) -> list[Submission]:
         if not ids:
             return []
 
         query = select(Submission).where(Submission.id.in_(ids))
         return self.session.scalars(query).all()
 
-    def get_submission(self: "RedditCache", id: str) -> Submission | None:
+    def get_submission(self: "PostgresStore", id: str) -> Submission | None:
         return self.session.get(Submission, id)
 
 
-    def get_comments(self: "RedditCache", ids: list[str]) -> list[Comment]:
+    def get_comments(self: "PostgresStore", ids: list[str]) -> list[Comment]:
         if not ids:
             return []
 
         query = select(Comment).where(Comment.id.in_(ids))
         return self.session.scalars(query).all()
 
-    def get_comment(self: "RedditCache", id: str) -> Comment | None:
+    def get_comment(self: "PostgresStore", id: str) -> Comment | None:
         return self.session.get(Comment, id)
 
-    def get_users_submissions(self: "RedditCache", username: str) -> list[Submission]:
+    def get_users_submissions(self: "PostgresStore", username: str) -> list[Submission]:
         query = (
             select(Submission)
             .where(Submission.author == username)
@@ -93,7 +92,7 @@ class RedditCache:
         )
         return self.session.scalars(query).all()
 
-    def get_users_comments(self: "RedditCache", username: str) -> list[Comment]:
+    def get_users_comments(self: "PostgresStore", username: str) -> list[Comment]:
         query = (
             select(Comment)
             .where(Comment.author == username)
@@ -105,10 +104,10 @@ class RedditCache:
         query = select(Comment).where(Comment.submission_id == submission_id)
         return list(self.session.scalars(query).all())
 
-    def get_user_cache_status(self: "RedditCache", username: str):
+    def get_user_cache_status(self: "PostgresStore", username: str):
         return self.session.get(UserContributionCacheStatus, username)
 
-    def get_thread_cache_status(self: "RedditCache", submission_id: str):
+    def get_thread_cache_status(self: "PostgresStore", submission_id: str):
         return self.session.get(ThreadCacheStatus, submission_id)
  
     def submissions_exist(self, ids: list[str]) -> set[str]:
@@ -126,5 +125,5 @@ class RedditCache:
         return set(self.session.scalars(query).all())
 
 
-    def close(self: "RedditCache"):
+    def close(self: "PostgresStore"):
         self.session.close()

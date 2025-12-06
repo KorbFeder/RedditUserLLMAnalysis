@@ -18,11 +18,10 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
-from src.database.reddit_repository import RedditRepository, CacheConfig
-from src.database.reddit_cache import RedditCache
-from src.data_providers.pushpull_provider import PushPullProvider
-from src.models.reddit import Submission, Comment
-from src.models.cache import UserContributionCacheStatus, ThreadCacheStatus
+from src.services.repository import Repository, CacheConfig
+from src.storage.postgres import PostgresStore
+from src.providers.reddit.pushpull import PullPushClient
+from src.storage.models import Submission, Comment, UserContributionCacheStatus, ThreadCacheStatus
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -129,7 +128,7 @@ class TestCursorLogic(unittest.TestCase):
     def test_stop_at_timestamp_logic(self):
         """Test that fetching stops at the correct timestamp."""
         config = get_test_config(cache_mode=1)  # NO_CACHE to avoid DB
-        repo = RedditRepository(config)
+        repo = Repository(config)
 
         # Create mock comments with decreasing timestamps (newest first)
         mock_comments = [
@@ -154,7 +153,7 @@ class TestCursorLogic(unittest.TestCase):
     def test_no_stop_when_cursor_is_none(self):
         """Test that all items are fetched when cursor is None."""
         config = get_test_config(cache_mode=1)
-        repo = RedditRepository(config)
+        repo = Repository(config)
 
         mock_comments = [
             create_mock_comment('c1', 'sub1', 'sub1', 'user1', 1700000003),
@@ -205,7 +204,7 @@ class TestIsHistoryCompleteLogic(unittest.TestCase):
 
         # We'll test the logic by checking that None is passed to fetch
         # when is_history_complete is False
-        with patch('src.database.reddit_repository.RedditCache') as MockCache:
+        with patch('src.database.reddit_repository.PostgresStore') as MockCache:
             mock_cache = MockCache.return_value
 
             # Simulate: no thread status (first fetch)
@@ -215,7 +214,7 @@ class TestIsHistoryCompleteLogic(unittest.TestCase):
             )
             mock_cache.get_submission_comments.return_value = []
 
-            with patch('src.database.reddit_repository.PushPullProvider') as MockProvider:
+            with patch('src.database.reddit_repository.PullPushClient') as MockProvider:
                 mock_provider = MockProvider.return_value
                 mock_provider.fetch_submission.return_value = None  # Not needed, have cached
 
@@ -232,7 +231,7 @@ class TestIsHistoryCompleteLogic(unittest.TestCase):
 
                 mock_provider.stream_submission_comments = mock_stream
 
-                repo = RedditRepository(config)
+                repo = Repository(config)
                 repo.cache = mock_cache
                 repo.push_pull = mock_provider
 
@@ -251,7 +250,7 @@ class TestIsHistoryCompleteLogic(unittest.TestCase):
         """
         config = get_test_config(cache_mode=0)  # DEFAULT mode
 
-        with patch('src.database.reddit_repository.RedditCache') as MockCache:
+        with patch('src.database.reddit_repository.PostgresStore') as MockCache:
             mock_cache = MockCache.return_value
 
             # Simulate: thread was already fully fetched
@@ -268,7 +267,7 @@ class TestIsHistoryCompleteLogic(unittest.TestCase):
                 create_mock_comment('c1', 'sub1', 'sub1', 'user1', 1700000003),
             ]
 
-            with patch('src.database.reddit_repository.PushPullProvider') as MockProvider:
+            with patch('src.database.reddit_repository.PullPushClient') as MockProvider:
                 mock_provider = MockProvider.return_value
 
                 # New comment since last fetch
@@ -281,7 +280,7 @@ class TestIsHistoryCompleteLogic(unittest.TestCase):
 
                 mock_provider.stream_submission_comments = mock_stream
 
-                repo = RedditRepository(config)
+                repo = Repository(config)
                 repo.cache = mock_cache
                 repo.push_pull = mock_provider
 
@@ -327,7 +326,7 @@ class TestBugScenario(unittest.TestCase):
 
         config = get_test_config(cache_mode=0)
 
-        with patch('src.database.reddit_repository.RedditCache') as MockCache:
+        with patch('src.database.reddit_repository.PostgresStore') as MockCache:
             mock_cache = MockCache.return_value
 
             # Simulate: alice's comment is cached (from user fetch)
@@ -336,7 +335,7 @@ class TestBugScenario(unittest.TestCase):
             mock_cache.get_submission.return_value = submission
             mock_cache.get_submission_comments.return_value = [alice_comment]
 
-            with patch('src.database.reddit_repository.PushPullProvider') as MockProvider:
+            with patch('src.database.reddit_repository.PullPushClient') as MockProvider:
                 mock_provider = MockProvider.return_value
 
                 def mock_stream(submission_id):
@@ -344,7 +343,7 @@ class TestBugScenario(unittest.TestCase):
 
                 mock_provider.stream_submission_comments = mock_stream
 
-                repo = RedditRepository(config)
+                repo = Repository(config)
                 repo.cache = mock_cache
                 repo.push_pull = mock_provider
 
@@ -371,12 +370,12 @@ class TestNullHandling(unittest.TestCase):
         """get_thread should return None if submission can't be fetched."""
         config = get_test_config(cache_mode=1)  # NO_CACHE
 
-        with patch('src.database.reddit_repository.PushPullProvider') as MockProvider:
+        with patch('src.database.reddit_repository.PullPushClient') as MockProvider:
             mock_provider = MockProvider.return_value
             mock_provider.fetch_submission.return_value = None
 
-            with patch('src.database.reddit_repository.RedditCache'):
-                repo = RedditRepository(config)
+            with patch('src.database.reddit_repository.PostgresStore'):
+                repo = Repository(config)
                 repo.push_pull = mock_provider
 
                 result = repo.get_thread('nonexistent')
@@ -387,7 +386,7 @@ class TestNullHandling(unittest.TestCase):
         """Thread with no comments should still be marked complete."""
         config = get_test_config(cache_mode=0)
 
-        with patch('src.database.reddit_repository.RedditCache') as MockCache:
+        with patch('src.database.reddit_repository.PostgresStore') as MockCache:
             mock_cache = MockCache.return_value
             mock_cache.get_thread_cache_status.return_value = None
             mock_cache.get_submission.return_value = create_mock_submission(
@@ -395,7 +394,7 @@ class TestNullHandling(unittest.TestCase):
             )
             mock_cache.get_submission_comments.return_value = []
 
-            with patch('src.database.reddit_repository.PushPullProvider') as MockProvider:
+            with patch('src.database.reddit_repository.PullPushClient') as MockProvider:
                 mock_provider = MockProvider.return_value
 
                 def mock_stream(submission_id):
@@ -403,7 +402,7 @@ class TestNullHandling(unittest.TestCase):
 
                 mock_provider.stream_submission_comments = mock_stream
 
-                repo = RedditRepository(config)
+                repo = Repository(config)
                 repo.cache = mock_cache
                 repo.push_pull = mock_provider
 

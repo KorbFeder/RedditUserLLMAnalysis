@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
-from src.data_providers.pushpull_provider import PushPullProvider
+from src.providers.reddit.pushpull import PullPushClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ class TestVerifyPushPullData(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.provider = PushPullProvider(get_config())
+        cls.provider = PullPushClient(get_config())
 
     def test_known_submission_data(self):
         """Verify a known submission has expected fields."""
@@ -152,7 +152,7 @@ class TestDataConsistency(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.provider = PushPullProvider(get_config())
+        cls.provider = PullPushClient(get_config())
 
     def test_submission_fetch_consistency(self):
         """Fetching same submission twice should return same data."""

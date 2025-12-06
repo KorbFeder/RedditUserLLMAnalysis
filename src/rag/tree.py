@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 
-from src.models.reddit import Comment
+from src.storage.models import Comment
 
 logger = logging.getLogger(__name__)
 

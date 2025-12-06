@@ -3,20 +3,20 @@ from datetime import datetime
 from dataclasses import asdict
 from tqdm import tqdm
 
-from src.database.reddit_repository import RedditRepository
-from src.database.reddit_vectorstore import RedditVectorstore
-from src.models.reddit import Submission, Comment
-from src.database.rag.small_to_large_chunking import SmallToLargeDocumentBuilder, SmallToLargeMetadata, StlDocumentType
+from src.services.repository import Repository
+from src.storage.chroma import VectorStore
+from src.storage.models import Submission, Comment
+from src.rag.chunking import DocumentBuilder, DocumentMetadata, DocumentType
 
 logger = logging.getLogger(__name__)
 
-class DataManager:
-    def __init__(self: "DataManager", config: dict):
-        self.reddit_repo = RedditRepository(config)
-        self.db = RedditVectorstore()
-        self.small_to_large = SmallToLargeDocumentBuilder()
+class Vectorizer:
+    def __init__(self: "Vectorizer", config: dict):
+        self.reddit_repo = Repository(config)
+        self.db = VectorStore()
+        self.small_to_large = DocumentBuilder()
 
-    def store_user_data(self: "DataManager", username: str):
+    def store_user_data(self: "Vectorizer", username: str):
         submissions, comments = self.reddit_repo.get_user_contributions(username)
 
         thread_ids = list(dict.fromkeys(
@@ -39,7 +39,7 @@ class DataManager:
             threads_stored += 1
  
     
-    def fill_vector_db(self: "DataManager", username: str):
+    def fill_vector_db(self: "Vectorizer", username: str):
         submissions, comments = self.reddit_repo.get_user_contributions(username)
 
         # filter out submission already stored in the vector db
@@ -53,9 +53,9 @@ class DataManager:
         logger.info(f"Fetched Submissions and Comment now filling Vector database with {len(submissions)} submissions and {len(comments)} comments")
         for submission in tqdm(submissions):
             doc = self.small_to_large.submission(submission)
-            metadata = SmallToLargeMetadata(
+            metadata = DocumentMetadata(
                 id=submission.id,
-                document_type=StlDocumentType.SUBMISSION.value,
+                document_type=DocumentType.SUBMISSION.value,
                 submission_id=submission.id,
                 parent_id="",
                 username=username,
@@ -104,9 +104,9 @@ class DataManager:
             # maybe a batch fetch here cause of speed
             doc = self.small_to_large.comment(submission, comment, parent_comment)
 
-            metadata = SmallToLargeMetadata(
+            metadata = DocumentMetadata(
                 id=comment.id,
-                document_type=StlDocumentType.COMMENT.value,
+                document_type=DocumentType.COMMENT.value,
                 submission_id=submission.id,
                 parent_id=comment.parent_id or "",
                 username=username,

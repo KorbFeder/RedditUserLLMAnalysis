@@ -2,10 +2,10 @@ from langgraph.graph import StateGraph, START, END
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 
-from src.model_providers.open_router import get_model
-from src.database.reddit_data_manager import DataManager
-from src.helpers.load_config import load_config
-from src.tools.reddit_tools import search_users_reddit_contributions
+from src.providers.llm.openrouter import get_model
+from src.services.vectorizer import Vectorizer
+from src.helpers.settings import load_config
+from src.agents.tools import search_users_reddit_contributions
 
 from typing import TypedDict
 
@@ -17,7 +17,7 @@ class UserSentimentState(TypedDict):
 
 
 def fetch_context(state: UserSentimentState):
-    data_manager = DataManager(config)
+    data_manager = Vectorizer(config)
     data_manager.fill_vector_db(state["username"])
     return {}
 

@@ -14,10 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
-from src.database.reddit_repository import RedditRepository
-from src.database.reddit_cache import RedditCache
-from src.data_providers.pushpull_provider import PushPullProvider
-from src.models.reddit import Submission, Comment
+from src.services.repository import Repository
+from src.storage.postgres import PostgresStore
+from src.providers.reddit.pushpull import PullPushClient
+from src.storage.models import Submission, Comment
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,13 +39,13 @@ def get_test_config(cache_mode: int = 0) -> dict:
     }
 
 
-class TestPushPullProvider(unittest.TestCase):
+class TestPullPushClient(unittest.TestCase):
     """Test the PushPull API provider directly."""
 
     @classmethod
     def setUpClass(cls):
         cls.config = get_test_config()
-        cls.provider = PushPullProvider(cls.config)
+        cls.provider = PullPushClient(cls.config)
 
     def test_fetch_single_submission(self):
         """Test fetching a known submission."""
@@ -106,12 +106,12 @@ class TestPushPullProvider(unittest.TestCase):
         self.assertEqual(self.provider._strip_prefix('no_prefix'), 'prefix')
 
 
-class TestRedditCache(unittest.TestCase):
+class TestPostgresStore(unittest.TestCase):
     """Test the PostgreSQL cache layer."""
 
     @classmethod
     def setUpClass(cls):
-        cls.cache = RedditCache()
+        cls.cache = PostgresStore()
 
     def test_submissions_exist_empty(self):
         """Test checking for non-existent submissions."""
@@ -129,13 +129,13 @@ class TestRedditCache(unittest.TestCase):
         self.assertIsNone(result)
 
 
-class TestRedditRepository(unittest.TestCase):
+class TestRepository(unittest.TestCase):
     """Test the repository layer with different cache modes."""
 
     def test_no_cache_mode_small_fetch(self):
         """Test fetching without cache using swintec (known small user)."""
         config = get_test_config(cache_mode=1)  # NO_CACHE
-        repo = RedditRepository(config)
+        repo = Repository(config)
 
         # Use swintec - the user already tested in main.py
         submissions, comments = repo.get_user_contributions('swintec')
@@ -153,7 +153,7 @@ class TestRedditRepository(unittest.TestCase):
     def test_get_thread(self):
         """Test fetching a complete thread."""
         config = get_test_config(cache_mode=1)  # NO_CACHE
-        repo = RedditRepository(config)
+        repo = Repository(config)
 
         # Fetch a known thread (swintec's post)
         result = repo.get_thread('1h0n5ql')
@@ -173,7 +173,7 @@ class TestDataIntegrity(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.config = get_test_config(cache_mode=1)  # NO_CACHE
-        cls.provider = PushPullProvider(cls.config)
+        cls.provider = PullPushClient(cls.config)
 
     def test_comment_has_required_fields(self):
         """Verify comments have all required fields populated."""
@@ -215,7 +215,7 @@ class TestCacheIntegration(unittest.TestCase):
     def test_cache_stores_and_retrieves(self):
         """Test that data is properly cached and retrieved."""
         config_with_cache = get_test_config(cache_mode=0)  # DEFAULT
-        repo_with_cache = RedditRepository(config_with_cache)
+        repo_with_cache = Repository(config_with_cache)
 
         # Fetch with cache enabled (will populate cache)
         logger.info("Fetching swintec with cache enabled...")
@@ -234,13 +234,13 @@ class TestCacheIntegration(unittest.TestCase):
         """Test fetching only from cache."""
         # First populate cache
         config_default = get_test_config(cache_mode=0)  # DEFAULT
-        repo_default = RedditRepository(config_default)
+        repo_default = Repository(config_default)
         subs1, coms1 = repo_default.get_user_contributions('swintec')
         logger.info(f"Populated cache: {len(subs1)} subs, {len(coms1)} comments")
 
         # Now fetch with CACHE_ONLY
         config_cache_only = get_test_config(cache_mode=2)  # CACHE_ONLY
-        repo_cache_only = RedditRepository(config_cache_only)
+        repo_cache_only = Repository(config_cache_only)
         subs2, coms2 = repo_cache_only.get_user_contributions('swintec')
         logger.info(f"Cache only fetch: {len(subs2)} subs, {len(coms2)} comments")
 

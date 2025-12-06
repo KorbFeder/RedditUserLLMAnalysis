@@ -1,7 +1,7 @@
 import logging
 from dotenv import load_dotenv
 
-from src.agents.user_sentiment import run
+from src.agents.sentiment import run
 
 load_dotenv()
 
