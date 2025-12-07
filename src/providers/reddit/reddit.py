@@ -87,8 +87,24 @@ class RedditClient:
 
             if not after:
                 break 
+    
+    def fetch_submissions(self: "RedditClient", ids: list[str]) -> list[Submission]:
+        """Fetch submissions by ID (no prefix needed)."""
+        if not ids:
+            return []
+        fullnames = [f"t3_{id.split('_')[-1]}" for id in ids]  # Handle if prefix accidentally passed
+        subs, _ = self._fetch_bulk(fullnames)
+        return subs
 
-    def fetch_bulk(self: "RedditClient", ids: list[str]) -> tuple[list[Submission], list[Comment]]:
+    def fetch_comments(self: "RedditClient", ids: list[str]) -> list[Comment]:
+        """Fetch comments by ID (no prefix needed)."""
+        if not ids:
+            return []
+        fullnames = [f"t1_{id.split('_')[-1]}" for id in ids]
+        _, comments = self._fetch_bulk(fullnames)
+        return comments
+
+    def _fetch_bulk(self: "RedditClient", ids: list[str]) -> tuple[list[Submission], list[Comment]]:
         """Fetch up to 100 items per request - THE FAST PATH."""
         submissions, comments = [], []
 

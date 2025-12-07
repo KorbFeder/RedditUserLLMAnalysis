@@ -1,7 +1,11 @@
 import logging
 from enum import Enum
+from typing import Iterator
+from tqdm import tqdm
+import requests
 
 from src.storage.postgres import PostgresStore
+from src.providers.reddit.reddit import RedditClient, RedditRateLimitException
 from src.providers.reddit.pushpull import PullPushClient
 from src.storage.models import Submission, Comment, UserContributionCacheStatus, ThreadCacheStatus
 
@@ -13,13 +17,14 @@ class CacheConfig(Enum):
     CACHE_ONLY = 2
     FULL_SAVE = 3
 
-class Repository:
-    def __init__(self: "Repository", config: dict):
+class DataService:
+    def __init__(self: "DataService", config: dict):
         self.cache = PostgresStore()
         self.push_pull = PullPushClient(config)
+        self.reddit = RedditClient(config)
         self.use_cache = CacheConfig(config['use_cache'])
 
-    def get_submission(self: "Repository", id: str) -> Submission | None:
+    def get_submission(self: "DataService", id: str) -> Submission | None:
         submission = self.cache.get_submission(id)
         if submission:
             return submission
@@ -27,16 +32,55 @@ class Repository:
         if submission: 
             return submission
 
-    def get_comment(self: "Repository", id: str) -> Comment | None:
+    def get_comment(self: "DataService", id: str) -> Comment | None:
         comment = self.cache.get_comment(id)
         if comment:
             return comment
         comment = self.push_pull.fetch_comment(id)
         if comment: 
             return comment
+        
+    def fetch_user_with_ancestry(self: "DataService", username: str, max_depth: int = 20) -> tuple[list[Submission], list[Comment]]:
+        # Fetch user content (cache-aware, tries Reddit with fallback to PullPush)
+        submissions, comments = self.get_user_contributions(username)
 
-    def get_user_contributions(self: "Repository", username: str) -> tuple[list[Submission], list[Comment]]: 
-        # check cache
+        # The submission where the user commented on
+        submission_ids = {c.submission_id for c in comments if c.submission_id}
+        existing_sub_ids = {s.id for s in submissions}
+        missing_sub_ids = submission_ids - existing_sub_ids
+
+        if missing_sub_ids:
+            logger.info(f"Fetching the root submission for each comment, number of submissions: {len(missing_sub_ids)}")
+            new_subs = self.reddit.fetch_submissions(list(missing_sub_ids))
+            submissions.extend(new_subs)
+
+        # Track seen IDs to avoid refetching
+        seen_ids = {c.id for c in comments}
+        _comments = comments
+
+        for i in tqdm(range(max_depth)):
+            # Get parent IDs we haven't seen yet
+            parent_ids = {c.parent_id for c in _comments if c.parent_id and c.parent_id not in seen_ids}
+
+            if not parent_ids:
+                logger.info(f"No more parent comments to fetch after {i} iterations")
+                break
+
+            parent_comments = self.reddit.fetch_comments(list(parent_ids))
+            # Filter out comments that point to submissions (reached top of thread)
+            parent_comments = [pc for pc in parent_comments if pc.parent_id != pc.submission_id]
+
+            # Update seen set and add to results
+            seen_ids.update(pc.id for pc in parent_comments)
+            _comments = parent_comments
+            comments.extend(parent_comments)
+
+            logger.info(f"Depth {i+1}: fetched {len(parent_comments)} parent comments")
+
+        return submissions, comments
+        
+
+    def get_user_contributions(self: "DataService", username: str) -> tuple[list[Submission], list[Comment]]:
         logging.info(f"Using {self.use_cache.name}")
         if self.use_cache == CacheConfig.DEFAULT:
             cached_submissions = self.cache.get_users_submissions(username)
@@ -48,8 +92,11 @@ class Repository:
             status = self.cache.get_user_cache_status(username)
  
             # fetch the freshest data until we either have overlap with the cache or we have all the data
-            new_submissions = self._fetch_new_submissions(username, status.newest_submission_cursor if status else None)
-            new_comments = self._fetch_new_comments_from_username(username, status.newest_comment_cursor if status else None)
+            new_submissions, new_comments = self._fetch_user_content(
+                username,
+                sub_cursor=status.newest_submission_cursor if status else None,
+                com_cursor=status.newest_comment_cursor if status else None
+            )
 
             logger.info(f"Fetched {len(new_submissions)} submission and {len(new_comments)} from the api")
 
@@ -68,9 +115,7 @@ class Repository:
 
             return new_submissions + cached_submissions, new_comments + cached_comments
         elif self.use_cache == CacheConfig.NO_CACHE:
-            new_submissions = self._fetch_new_submissions(username, None)
-            new_comments = self._fetch_new_comments_from_username(username, None)
-            return new_submissions, new_comments
+            return self._fetch_user_content(username)
 
         elif self.use_cache == CacheConfig.CACHE_ONLY:
             cached_comments = self.cache.get_users_comments(username)
@@ -78,9 +123,7 @@ class Repository:
             return cached_submissions, cached_comments
 
         elif self.use_cache == CacheConfig.FULL_SAVE:
-            new_submissions = self._fetch_new_submissions(username, None)
-            new_comments = self._fetch_new_comments_from_username(username, None)
-
+            new_submissions, new_comments = self._fetch_user_content(username)
             status = self.cache.get_user_cache_status(username)
 
             if new_submissions:
@@ -97,7 +140,7 @@ class Repository:
             return new_submissions, new_comments
 
 
-    def get_thread(self: "Repository", submission_id: str) -> tuple[Submission, list[Comment]] | None:
+    def get_thread(self: "DataService", submission_id: str) -> tuple[Submission, list[Comment]] | None:
         cached_comments = []
 
         if self.use_cache == CacheConfig.DEFAULT:
@@ -113,11 +156,11 @@ class Repository:
                     return None
                 self.cache.add_submissions([submission])
 
-            # if is_history_complete is not True or we dont have a status for the cache yet, 
+            # if is_history_complete is not True or we dont have a status for the cache yet,
             # then we need to fully fetch the whole thread
             if status is None or not status.is_history_complete:
                 logger.info(f"The thread {submission_id} is not in the cache, fetching is completely")
-                new_comments = self._fetch_new_comments_from_submission(submission_id, None)
+                new_comments = self._collect_from_stream(self.push_pull.stream_submission_comments(submission_id))
 
                 if new_comments:
                     self.cache.add_comments(new_comments)
@@ -129,7 +172,10 @@ class Repository:
                 ))
             else:
                 logger.info(f"The thread {submission_id} is already fully fetched in the cache just checking for updates")
-                new_comments = self._fetch_new_comments_from_submission(submission_id, status.newest_item_cursor)
+                new_comments = self._collect_from_stream(
+                    self.push_pull.stream_submission_comments(submission_id),
+                    stop_at=status.newest_item_cursor
+                )
 
                 if new_comments:
                     self.cache.add_comments(new_comments)
@@ -141,11 +187,11 @@ class Repository:
         elif self.use_cache == CacheConfig.NO_CACHE:
             submission = self.push_pull.fetch_submission(submission_id)
 
-            if submission is None: 
+            if submission is None:
                 logger.warning(f"Couldn't fetch submission {submission_id} in NO_CACHE mode")
                 return None
 
-            new_comments = self._fetch_new_comments_from_submission(submission_id, None)
+            new_comments = self._collect_from_stream(self.push_pull.stream_submission_comments(submission_id))
         elif self.use_cache == CacheConfig.CACHE_ONLY:
             submission = self.cache.get_submission(submission_id)
 
@@ -156,9 +202,9 @@ class Repository:
             new_comments = self.cache.get_submission_comments(submission_id)
         elif self.use_cache == CacheConfig.FULL_SAVE:
             submission = self.push_pull.fetch_submission(submission_id)
-            new_comments = self._fetch_new_comments_from_submission(submission_id, None)
+            new_comments = self._collect_from_stream(self.push_pull.stream_submission_comments(submission_id))
 
-            if submission is None: 
+            if submission is None:
                 logger.warning(f"Couldn't fetch submission {submission_id} in FULL_SAVE mode")
                 return None
 
@@ -175,30 +221,39 @@ class Repository:
         return submission, new_comments + cached_comments
 
 
-    def _fetch_new_submissions(self: "Repository", username: str, stop_at_timestamp: int | None) -> list[Submission]:
-        new_submissions = []
-        for current_submission in self.push_pull.stream_user_submissions(username):
-            for sub in current_submission:
-                if stop_at_timestamp is not None and sub.created_utc <= stop_at_timestamp:
-                    return new_submissions
-                new_submissions.append(sub)
-        return new_submissions
-    
-    def _fetch_new_comments_from_username(self: "Repository", username: str, stop_at_timestamp: int | None) -> list[Comment]:
-        new_comments = []
-        for current_comment in self.push_pull.stream_user_comments(username):
-            for com in current_comment:
-                if stop_at_timestamp is not None and com.created_utc <= stop_at_timestamp:
-                    return new_comments
-                new_comments.append(com)
-        return new_comments
+    def _collect_from_stream(self: "DataService", stream: Iterator, stop_at: int | None = None) -> list:
+        """Collect items from a batch stream until stop_at timestamp."""
+        results = []
+        for batch in stream:
+            for item in batch:
+                if stop_at is not None and item.created_utc <= stop_at:
+                    return results
+                results.append(item)
+        return results
 
-    def _fetch_new_comments_from_submission(self: "Repository", submission_id: str, stop_at_timestamp: int | None) -> list[Comment]:
-        new_comments = []
-        for current_comment in self.push_pull.stream_submission_comments(submission_id):
-            for com in current_comment:
-                if stop_at_timestamp is not None and com.created_utc <= stop_at_timestamp:
-                    return new_comments
-                new_comments.append(com)
-        return new_comments
+    def _fetch_user_content(
+        self: "DataService",
+        username: str,
+        sub_cursor: int | None = None,
+        com_cursor: int | None = None,
+    ) -> tuple[list[Submission], list[Comment]]:
+        """Fetch user content from PullPush, and Reddit if available."""
+        # Always fetch from PullPush (reliable, has historical/deleted)
+        subs = self._collect_from_stream(self.push_pull.stream_user_submissions(username), sub_cursor)
+        coms = self._collect_from_stream(self.push_pull.stream_user_comments(username), com_cursor)
 
+        try:
+            subs_r = self._collect_from_stream(self.reddit.stream_user_submissions(username), sub_cursor)
+            coms_r = self._collect_from_stream(self.reddit.stream_user_comments(username), com_cursor)
+            subs = self._merge_by_id(subs, subs_r) 
+            coms = self._merge_by_id(coms, coms_r)
+        except (RedditRateLimitException, requests.RequestException) as e:
+            logger.warning(f"Reddit API unavailable, using PullPush only: {e}")
+
+        return subs, coms
+
+    def _merge_by_id(self: "DataService", primary: list, fallback: list) -> list:
+        """Merge two lists by ID. Primary wins, fallback fills missing."""
+        result = {item.id: item for item in fallback}  # Fallback first
+        result.update({item.id: item for item in primary})  # Primary overwrites
+        return list(result.values())

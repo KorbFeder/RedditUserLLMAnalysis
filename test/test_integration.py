@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
-from src.services.repository import Repository
+from services.data_service import DataService
 from src.storage.postgres import PostgresStore
 from src.providers.reddit.pushpull import PullPushClient
 from src.storage.models import Submission, Comment
@@ -130,12 +130,12 @@ class TestPostgresStore(unittest.TestCase):
 
 
 class TestRepository(unittest.TestCase):
-    """Test the repository layer with different cache modes."""
+    """Test the DataService layer with different cache modes."""
 
     def test_no_cache_mode_small_fetch(self):
         """Test fetching without cache using swintec (known small user)."""
         config = get_test_config(cache_mode=1)  # NO_CACHE
-        repo = Repository(config)
+        repo = DataService(config)
 
         # Use swintec - the user already tested in main.py
         submissions, comments = repo.get_user_contributions('swintec')
@@ -153,7 +153,7 @@ class TestRepository(unittest.TestCase):
     def test_get_thread(self):
         """Test fetching a complete thread."""
         config = get_test_config(cache_mode=1)  # NO_CACHE
-        repo = Repository(config)
+        repo = DataService(config)
 
         # Fetch a known thread (swintec's post)
         result = repo.get_thread('1h0n5ql')
@@ -210,12 +210,12 @@ class TestDataIntegrity(unittest.TestCase):
 
 
 class TestCacheIntegration(unittest.TestCase):
-    """Test cache integration with repository."""
+    """Test cache integration with DataService."""
 
     def test_cache_stores_and_retrieves(self):
         """Test that data is properly cached and retrieved."""
         config_with_cache = get_test_config(cache_mode=0)  # DEFAULT
-        repo_with_cache = Repository(config_with_cache)
+        repo_with_cache = DataService(config_with_cache)
 
         # Fetch with cache enabled (will populate cache)
         logger.info("Fetching swintec with cache enabled...")
@@ -234,13 +234,13 @@ class TestCacheIntegration(unittest.TestCase):
         """Test fetching only from cache."""
         # First populate cache
         config_default = get_test_config(cache_mode=0)  # DEFAULT
-        repo_default = Repository(config_default)
+        repo_default = DataService(config_default)
         subs1, coms1 = repo_default.get_user_contributions('swintec')
         logger.info(f"Populated cache: {len(subs1)} subs, {len(coms1)} comments")
 
         # Now fetch with CACHE_ONLY
         config_cache_only = get_test_config(cache_mode=2)  # CACHE_ONLY
-        repo_cache_only = Repository(config_cache_only)
+        repo_cache_only = DataService(config_cache_only)
         subs2, coms2 = repo_cache_only.get_user_contributions('swintec')
         logger.info(f"Cache only fetch: {len(subs2)} subs, {len(coms2)} comments")
 

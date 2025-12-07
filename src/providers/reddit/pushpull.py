@@ -108,7 +108,7 @@ class PullPushClient:
             yield [self._to_comment(comment) for comment in current_comments]
 
 
-    def fetch_comment(self: "PullPushClient", comment_id: str) -> Submission | None:
+    def fetch_comment(self: "PullPushClient", comment_id: str) -> Comment | None:
         params = {'id': comment_id}
 
         _comment = self.api_request('comment', params).get('data', [])
@@ -132,17 +132,21 @@ class PullPushClient:
 
         return self._to_submission(submission)
 
-    def fetch_bulk(self, ids: list[str]) -> tuple[list[Submission], list[Comment]]:
-        # Fallback: fetch one by one (slow)
-        submissions, comments = [], []
+    def fetch_submissions(self: "PullPushClient", ids: list[str]) -> list[Submission]:
+        results = []
         for id in ids:
-            if id.startswith("t3_"):
-                sub = self.fetch_submission(id[3:])
-                if sub: submissions.append(sub)
-            elif id.startswith("t1_"):
-                com = self.fetch_comment(id[3:])
-                if com: comments.append(com)
-        return submissions, comments
+            sub = self.fetch_submission(id.split('_')[-1])
+            if sub:
+                results.append(sub)
+        return results
+
+    def fetch_comments(self: "PullPushClient", ids: list[str]) -> list[Comment]:
+        results = []
+        for id in ids:
+            comment = self.fetch_comment(id.split('_')[-1])
+            if comment:
+                results.append(comment)
+        return results
 
 
     def _strip_prefix(self: "PullPushClient", reddit_id: str | None) -> str | None:

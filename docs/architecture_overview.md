@@ -8,7 +8,7 @@ This system analyzes Reddit users by fetching their complete contribution histor
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   PullPush API  │────▶│  Repository │────▶│   Vectorizer   │
+│   PullPush API  │────▶│  DataService │────▶│   Vectorizer   │
 │ (api.pullpush.io)│     │  (Orchestration)  │     │ (Document Gen)  │
 └─────────────────┘     └────────┬─────────┘     └────────┬────────┘
                                  │                        │
@@ -188,7 +188,7 @@ def stream_user_comments(username):
 | Component | Responsibility |
 |-----------|---------------|
 | `PullPushClient` | API client, pagination, rate limiting |
-| `Repository` | Cache logic, fetch orchestration, mode handling |
+| `DataService` | Cache logic, fetch orchestration, mode handling |
 | `PostgresStore` | Database operations, UPSERT logic |
 | `Vectorizer` | High-level workflows, document generation |
 | `VectorStore` | Embedding storage and retrieval |

@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
-from src.services.repository import Repository, CacheConfig
+from services.data_service import DataService, CacheConfig
 from src.storage.postgres import PostgresStore
 from src.providers.reddit.pushpull import PullPushClient
 from src.storage.models import Submission, Comment, UserContributionCacheStatus, ThreadCacheStatus
@@ -128,7 +128,7 @@ class TestCursorLogic(unittest.TestCase):
     def test_stop_at_timestamp_logic(self):
         """Test that fetching stops at the correct timestamp."""
         config = get_test_config(cache_mode=1)  # NO_CACHE to avoid DB
-        repo = Repository(config)
+        repo = DataService(config)
 
         # Create mock comments with decreasing timestamps (newest first)
         mock_comments = [
@@ -153,7 +153,7 @@ class TestCursorLogic(unittest.TestCase):
     def test_no_stop_when_cursor_is_none(self):
         """Test that all items are fetched when cursor is None."""
         config = get_test_config(cache_mode=1)
-        repo = Repository(config)
+        repo = DataService(config)
 
         mock_comments = [
             create_mock_comment('c1', 'sub1', 'sub1', 'user1', 1700000003),
@@ -231,7 +231,7 @@ class TestIsHistoryCompleteLogic(unittest.TestCase):
 
                 mock_provider.stream_submission_comments = mock_stream
 
-                repo = Repository(config)
+                repo = DataService(config)
                 repo.cache = mock_cache
                 repo.push_pull = mock_provider
 
@@ -280,7 +280,7 @@ class TestIsHistoryCompleteLogic(unittest.TestCase):
 
                 mock_provider.stream_submission_comments = mock_stream
 
-                repo = Repository(config)
+                repo = DataService(config)
                 repo.cache = mock_cache
                 repo.push_pull = mock_provider
 
@@ -343,7 +343,7 @@ class TestBugScenario(unittest.TestCase):
 
                 mock_provider.stream_submission_comments = mock_stream
 
-                repo = Repository(config)
+                repo = DataService(config)
                 repo.cache = mock_cache
                 repo.push_pull = mock_provider
 
@@ -375,7 +375,7 @@ class TestNullHandling(unittest.TestCase):
             mock_provider.fetch_submission.return_value = None
 
             with patch('src.database.reddit_repository.PostgresStore'):
-                repo = Repository(config)
+                repo = DataService(config)
                 repo.push_pull = mock_provider
 
                 result = repo.get_thread('nonexistent')
@@ -402,7 +402,7 @@ class TestNullHandling(unittest.TestCase):
 
                 mock_provider.stream_submission_comments = mock_stream
 
-                repo = Repository(config)
+                repo = DataService(config)
                 repo.cache = mock_cache
                 repo.push_pull = mock_provider
 

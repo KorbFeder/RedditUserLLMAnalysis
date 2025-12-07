@@ -22,5 +22,9 @@ class RedditSource(Protocol):
     def fetch_comment(self: "RedditSource", comment_id: str) -> Submission | None:
         ...
 
-    def fetch_bulk(self: "RedditSource", ids: list[str]) -> tuple[list[Submission], list[Comment]]:
+    def fetch_submissions(self: "RedditSource", ids: list[str]) -> list[Submission]:
         ...
+
+    def fetch_comments(self: "RedditSource", ids: list[str]) -> list[Comment]:
+        ...
+

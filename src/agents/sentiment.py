@@ -6,6 +6,7 @@ from src.providers.llm.openrouter import get_model
 from src.services.vectorizer import Vectorizer
 from src.helpers.settings import load_config
 from src.agents.tools import search_users_reddit_contributions
+from services.data_service import DataService
 
 from typing import TypedDict
 
@@ -66,17 +67,19 @@ Be thorough - make at least 3-5 different searches before concluding."""
 
 
 def run():
+    repo = DataService(config)
+    repo.fetch_user_with_ancestry('spez')
     # Build graph
-    builder = StateGraph(UserSentimentState)
-    builder.add_node("fetch", fetch_context)
-    builder.add_node("analyze", compute_sentiment)
-    builder.add_edge(START, "fetch")
-    builder.add_edge("fetch", "analyze")
-    builder.add_edge("analyze", END)
+    #builder = StateGraph(UserSentimentState)
+    #builder.add_node("fetch", fetch_context)
+    #builder.add_node("analyze", compute_sentiment)
+    #builder.add_edge(START, "fetch")
+    #builder.add_edge("fetch", "analyze")
+    #builder.add_edge("analyze", END)
 
-    sentiment_agent = builder.compile()
+    #sentiment_agent = builder.compile()
 
-    sentiment_agent.invoke({
-        "username": "",
-        "question": ""
-    })
+    #sentiment_agent.invoke({
+    #    "username": "",
+    #    "question": ""
+    #})
