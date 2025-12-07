@@ -5,6 +5,7 @@ import base64
 import time
 from typing import AsyncIterator
 import logging
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.storage.models import Submission, Comment
 
@@ -48,7 +49,10 @@ class RedditClient:
 
     def __init__(self, config: dict, user_agent: str = "SentimentAgent/1.0"):
         self.user_agent = user_agent
-        self.client = httpx.AsyncClient(headers={"User-Agent": user_agent})
+        self.client = httpx.AsyncClient(
+            headers={"User-Agent": user_agent},
+            timeout=httpx.Timeout(30.0)  # 30s timeout (default is 5s)
+        )
 
         self.config = config
         self._reddit_id = os.getenv("REDDIT_ID")
@@ -223,6 +227,11 @@ class RedditClient:
             created_utc=int(comment['created_utc']) if comment.get('created_utc') is not None else None
         )
     
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError))
+    )
     async def _get(self, endpoint: str, params: dict = None, _retry: bool = False) -> dict:
         await self._ensure_auth()
 

@@ -14,8 +14,6 @@ class IngestionService:
         self.db = PostgresStore()
         self.push_pull = PullPushClient(config)
         self.reddit = RedditClient(config)
-    
-
         
     async def sync_users_comment_chain(self: "IngestionService", username: str, max_depth: int = 20):
         """Sync user's content and walk parent comment chain.
@@ -60,20 +58,10 @@ class IngestionService:
                 else:
                     all_comments = reddit_comments
 
-                # Save all fetched comments (filter duplicates - edge case from concurrent sources)
+                # Save all fetched comments (add_comments handles deduplication)
                 if all_comments:
-                    # Deduplicate within batch (same ID could come from Reddit and PullPush)
-                    unique_comments = {c.id: c for c in all_comments}
-
-                    # Force fresh read from DB (clear session cache)
-                    self.db.session.expire_all()
-                    already_exists = self.db.comments_exist(list(unique_comments.keys()))
-                    truly_new = [c for c in unique_comments.values() if c.id not in already_exists]
-
-                    if truly_new:
-                        self.db.session.add_all(truly_new)
-                        self.db.session.commit()
-                    logger.info(f"Depth {i+1}: saved {len(truly_new)} comments (skipped {len(all_comments) - len(truly_new)} duplicates)")
+                    self.db.add_comments(all_comments)
+                    logger.info(f"Depth {i+1}: saved {len(all_comments)} comments")
 
                 # Add their relations for next iteration
                 parent_relations.extend((c.id, c.parent_id, c.submission_id) for c in all_comments)

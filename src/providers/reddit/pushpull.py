@@ -155,11 +155,21 @@ class PullPushClient:
         return self._to_submission(data[0])
 
     async def fetch_submissions(self: "PullPushClient", ids: list[str]) -> list[Submission]:
+        """Fetch submissions by IDs using bulk API (comma-separated ids parameter)."""
+        if not ids:
+            return []
+
         results = []
-        for id in ids:
-            sub = await self.fetch_submission(id.split('_')[-1])
-            if sub:
-                results.append(sub)
+        clean_ids = [id.split('_')[-1] for id in ids]
+
+        for i in range(0, len(clean_ids), 100):
+            chunk = clean_ids[i:i + 100]
+            params = {'ids': ','.join(chunk)}
+            response = await self.api_request('submission', params)
+            data = response.get('data', [])
+            results.extend(self._to_submission(s) for s in data)
+
+        logger.info(f"PullPush: fetched {len(results)}/{len(ids)} submissions")
         return results
 
     async def fetch_comments(self: "PullPushClient", ids: list[str]) -> list[Comment]:
