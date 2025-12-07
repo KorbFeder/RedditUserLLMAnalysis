@@ -14,47 +14,21 @@ class IngestionService:
         self.db = PostgresStore()
         self.push_pull = PullPushClient(config)
         self.reddit = RedditClient(config)
-        
-    async def sync_users_comment_chain(self, username: str, max_depth: int = 20):
-        """Sync user's content and walk parent comment chain.
+    
 
-        Uses lightweight relation queries (id, parent_id, submission_id) instead
-        of fetching full objects. Only hits API for comments not in DB.
+        
+    async def sync_users_comment_chain(self: "IngestionService", username: str, max_depth: int = 20):
+        """Sync user's content and walk parent comment chain.
         """
         await self.sync_user_contributions(username)
 
-        # Get lightweight relations for user's comments
         relations = self.db.get_user_comment_relations(username)
         seen_ids = {r[0] for r in relations}
         parent_ids = {r[1] for r in relations if r[1] and r[1] not in seen_ids and r[1] != r[2]}
         submission_ids = {r[2] for r in relations if r[2]}
 
-        # Fetch missing submissions (where user commented but not in DB)
-        existing_sub_ids = self.db.submissions_exist(list(submission_ids))
-        missing_sub_ids = list(submission_ids - existing_sub_ids)
-
-        if missing_sub_ids:
-            logger.info(f"Fetching {len(missing_sub_ids)} missing submissions")
-            new_subs_reddit = await self.reddit.fetch_submissions(missing_sub_ids)
-            new_subs_pushpull = await self.push_pull.fetch_submissions(missing_sub_ids)
-
-            # IDs found by each source
-            reddit_ids = {s.id for s in new_subs_reddit}
-            pushpull_ids = {s.id for s in new_subs_pushpull}
-
-            # Mark PullPush-only as deleted
-            for sub in new_subs_pushpull:
-                if sub.id not in reddit_ids:
-                    sub.is_deleted = True
-
-            # Merge: prefer PullPush (has original content), fallback to Reddit
-            all_subs = {s.id: s for s in new_subs_reddit}  # Reddit first (fallback)
-            all_subs.update({s.id: s for s in new_subs_pushpull})  # PullPush overwrites (truth)
-
-            if all_subs:
-                self.db.add_submissions(list(all_subs.values()))
-                logger.info(f"Saved {len(all_subs)} submissions ({len(pushpull_ids - reddit_ids)} deleted)")
-           
+        # Fetches the root submission of alle the comments the user commented on, maybe in parallel?
+        await self.sync_root_submission(submission_ids)          
 
         # Walk parent comment chain using lightweight queries
         for i in range(max_depth):
@@ -178,6 +152,34 @@ class IngestionService:
             "deleted_submissions": len(deleted_sub_ids),
             "deleted_comments": len(deleted_com_ids),
         }
+
+    async def sync_root_submission(self: "IngestionService", submission_ids: list[str]):
+        # Fetch missing submissions (where user commented but not in DB)
+        existing_sub_ids = self.db.submissions_exist(list(submission_ids))
+        missing_sub_ids = list(submission_ids - existing_sub_ids)
+
+        if missing_sub_ids:
+            logger.info(f"Fetching {len(missing_sub_ids)} missing submissions")
+            new_subs_reddit = await self.reddit.fetch_submissions(missing_sub_ids)
+            new_subs_pushpull = await self.push_pull.fetch_submissions(missing_sub_ids)
+
+            # IDs found by each source
+            reddit_ids = {s.id for s in new_subs_reddit}
+            pushpull_ids = {s.id for s in new_subs_pushpull}
+
+            # Mark PullPush-only as deleted
+            for sub in new_subs_pushpull:
+                if sub.id not in reddit_ids:
+                    sub.is_deleted = True
+
+            # Merge: prefer PullPush (has original content), fallback to Reddit
+            all_subs = {s.id: s for s in new_subs_reddit}  # Reddit first (fallback)
+            all_subs.update({s.id: s for s in new_subs_pushpull})  # PullPush overwrites (truth)
+
+            if all_subs:
+                self.db.add_submissions(list(all_subs.values()))
+                logger.info(f"Saved {len(all_subs)} submissions ({len(pushpull_ids - reddit_ids)} deleted)")
+ 
 
     async def _collect_submissions_from_stream(
         self,
