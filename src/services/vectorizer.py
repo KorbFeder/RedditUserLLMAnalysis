@@ -3,7 +3,7 @@ from datetime import datetime
 from dataclasses import asdict
 from tqdm import tqdm
 
-from services.data_service import DataService
+from src.services.data_service import DataService
 from src.storage.chroma import VectorStore
 from src.storage.models import Submission, Comment
 from src.rag.chunking import DocumentBuilder, DocumentMetadata, DocumentType

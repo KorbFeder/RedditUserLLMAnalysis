@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dotenv import load_dotenv
 
@@ -13,5 +14,5 @@ logging.basicConfig(
 
 
 if __name__ == "__main__":
-    run()
+    asyncio.run(run())
 

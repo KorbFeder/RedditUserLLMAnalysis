@@ -26,7 +26,7 @@ class IngestionService:
         # Get lightweight relations for user's comments
         relations = self.db.get_user_comment_relations(username)
         seen_ids = {r[0] for r in relations}
-        parent_ids = {r[1] for r in relations if r[1] and r[1] not in seen_ids}
+        parent_ids = {r[1] for r in relations if r[1] and r[1] not in seen_ids and r[1] != r[2]}
         submission_ids = {r[2] for r in relations if r[2]}
 
         # Fetch missing submissions (where user commented but not in DB)
@@ -35,12 +35,26 @@ class IngestionService:
 
         if missing_sub_ids:
             logger.info(f"Fetching {len(missing_sub_ids)} missing submissions")
-            new_subs = await self.reddit.fetch_submissions(missing_sub_ids)
-            # Skip existence check - we already verified these don't exist
-            if new_subs:
-                self.db.session.add_all(new_subs)
-                self.db.session.commit()
-                logger.info(f"Saved {len(new_subs)} submissions")
+            new_subs_reddit = await self.reddit.fetch_submissions(missing_sub_ids)
+            new_subs_pushpull = await self.push_pull.fetch_submissions(missing_sub_ids)
+
+            # IDs found by each source
+            reddit_ids = {s.id for s in new_subs_reddit}
+            pushpull_ids = {s.id for s in new_subs_pushpull}
+
+            # Mark PullPush-only as deleted
+            for sub in new_subs_pushpull:
+                if sub.id not in reddit_ids:
+                    sub.is_deleted = True
+
+            # Merge: prefer PullPush (has original content), fallback to Reddit
+            all_subs = {s.id: s for s in new_subs_reddit}  # Reddit first (fallback)
+            all_subs.update({s.id: s for s in new_subs_pushpull})  # PullPush overwrites (truth)
+
+            if all_subs:
+                self.db.add_submissions(list(all_subs.values()))
+                logger.info(f"Saved {len(all_subs)} submissions ({len(pushpull_ids - reddit_ids)} deleted)")
+           
 
         # Walk parent comment chain using lightweight queries
         for i in range(max_depth):

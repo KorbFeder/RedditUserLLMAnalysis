@@ -6,7 +6,8 @@ from src.providers.llm.openrouter import get_model
 from src.services.vectorizer import Vectorizer
 from src.helpers.settings import load_config
 from src.agents.tools import search_users_reddit_contributions
-from services.data_service import DataService
+from src.services.data_service import DataService
+from src.services.ingestion import IngestionService
 
 from typing import TypedDict
 
@@ -66,9 +67,12 @@ Be thorough - make at least 3-5 different searches before concluding."""
 
 
 
-def run():
-    repo = DataService(config)
-    repo.fetch_user_with_ancestry('spez')
+async def run():
+    repo = IngestionService(config)
+    try:
+        await repo.sync_users_comment_chain('spez')
+    finally:
+        await repo.close()
     # Build graph
     #builder = StateGraph(UserSentimentState)
     #builder.add_node("fetch", fetch_context)
