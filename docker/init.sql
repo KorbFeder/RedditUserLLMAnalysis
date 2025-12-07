@@ -14,6 +14,8 @@ CREATE TABLE submissions (
     gilded INTEGER,
     all_awardings JSONB,
     created_utc BIGINT,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_archived BOOLEAN NOT NULL DEFAULT TRUE,
     fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     raw_json JSONB NOT NULL
 );
@@ -29,6 +31,8 @@ CREATE TABLE comments (
     gilded INTEGER,
     all_awardings JSONB,
     created_utc BIGINT,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_archived BOOLEAN NOT NULL DEFAULT TRUE,
     fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     raw_json JSONB NOT NULL
 );

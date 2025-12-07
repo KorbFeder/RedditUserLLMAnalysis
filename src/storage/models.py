@@ -25,6 +25,11 @@ class Submission(Base):
     all_awardings: Mapped[list | None] = mapped_column(JSONB, default=None)
     created_utc: Mapped[int | None] = mapped_column(default=None)
 
+    # Source tracking: is_deleted=True means Reddit doesn't have it (deleted)
+    # is_archived=False means PullPush doesn't have it yet (too new)
+    is_deleted: Mapped[bool] = mapped_column(default=False)
+    is_archived: Mapped[bool] = mapped_column(default=True)
+
     fetched_at: Mapped[datetime] = mapped_column(default=func.now(), init=False)
 
 class Comment(Base):
@@ -41,6 +46,11 @@ class Comment(Base):
     gilded: Mapped[int | None] = mapped_column(default=None)
     all_awardings: Mapped[list | None] = mapped_column(JSONB, default=None)
     created_utc: Mapped[int | None] = mapped_column(default=None)
+
+    # Source tracking: is_deleted=True means Reddit doesn't have it (deleted)
+    # is_archived=False means PullPush doesn't have it yet (too new)
+    is_deleted: Mapped[bool] = mapped_column(default=False)
+    is_archived: Mapped[bool] = mapped_column(default=True)
 
     fetched_at: Mapped[datetime] = mapped_column(default=func.now(), init=False) 
 

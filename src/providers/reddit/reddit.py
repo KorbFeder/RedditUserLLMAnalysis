@@ -1,10 +1,38 @@
-import requests
-from requests.auth import HTTPBasicAuth
+import httpx
 import os
+import asyncio
+import base64
 import time
-from typing import Iterator
+from typing import AsyncIterator
+import logging
 
 from src.storage.models import Submission, Comment
+
+logger = logging.getLogger(__name__)
+
+class AsyncRateLimiter:
+    """Shared rate limiter that ensures minimum delay between requests."""
+
+    def __init__(self, min_delay: float):
+        self.min_delay = min_delay
+        self.lock = asyncio.Lock()
+        self.last_request = 0.0
+
+    async def acquire(self):
+        """Wait until we can make a request without violating rate limit."""
+        async with self.lock:
+            now = time.time()
+            elapsed = now - self.last_request
+            wait_time = self.min_delay - elapsed
+
+            if wait_time > 0:
+                await asyncio.sleep(wait_time)
+
+            self.last_request = time.time()
+
+    def update_delay(self, new_delay: float):
+        """Update the minimum delay (e.g., after authentication)."""
+        self.min_delay = new_delay
 
 
 class RedditRateLimitException(Exception):
@@ -15,51 +43,69 @@ class RedditRateLimitException(Exception):
 
 
 class RedditClient:
-    def __init__(self: "RedditClient", config: dict, user_agent: str = "SentimentAgent/1.0"):
-        self.session = requests.Session()
-        self.session.headers["User-Agent"] = user_agent
+    # Shared rate limiter across all instances
+    _rate_limiter: AsyncRateLimiter | None = None
+
+    def __init__(self, config: dict, user_agent: str = "SentimentAgent/1.0"):
+        self.user_agent = user_agent
+        self.client = httpx.AsyncClient(headers={"User-Agent": user_agent})
 
         self.config = config
         self._reddit_id = os.getenv("REDDIT_ID")
         self._reddit_secret = os.getenv("REDDIT_SECRET")
 
-        self.rate_limit = float(os.getenv("rate_limit_no_key", "6.0"))
         self.base_url = "https://www.reddit.com"
         self.authenticated = False
         self._token_expires_at = 0
+        self._auth_initialized = False
 
-        if self._reddit_id and self._reddit_secret:
-            self._authenticate()
-            self.rate_limit = float(os.getenv("rate_limit_key", "0.5"))
-            self.base_url = "https://oauth.reddit.com"
-            self.authenticated = True
+        # Initialize shared rate limiter once (start with unauthenticated rate)
+        if RedditClient._rate_limiter is None:
+            rate_limit = float(os.getenv("rate_limit_no_key", "6.0"))
+            RedditClient._rate_limiter = AsyncRateLimiter(rate_limit)
 
     @property
-    def source_name(self: "RedditClient") -> str: 
+    def source_name(self: "RedditClient") -> str:
         return "reddit"
 
-    def stream_user_submissions(self: "RedditClient", username: str) -> Iterator[list[Submission]]:
+    async def _ensure_auth(self):
+        """Lazy authentication on first request."""
+        if self._auth_initialized:
+            return
+        if self._reddit_id and self._reddit_secret:
+            await self._authenticate()
+            # Update shared rate limiter to faster authenticated rate
+            new_rate = float(os.getenv("rate_limit_key", "0.5"))
+            self._rate_limiter.update_delay(new_rate)
+            self.base_url = "https://oauth.reddit.com"
+            self.authenticated = True
+        self._auth_initialized = True
+
+    async def stream_user_submissions(self: "RedditClient", username: str) -> AsyncIterator[list[Submission]]:
         after = None
+        count = 0
         while True:
             params = {"limit": 100}
             if after:
                 params["after"] = after
 
-            response = self._get(f"user/{username}/submitted", params)
+            response = await self._get(f"user/{username}/submitted", params)
             children = response["data"]["children"]
 
             if not children:
                 break
 
+            count += len(children)
+            logger.info(f"Fetched {count} submissions for a user")
             yield [self._to_submission(s["data"]) for s in children]
             after = response["data"].get("after")
 
             if not after:
                 break
 
-    def stream_submission_comments(self: "RedditClient", submission_id: str) -> Iterator[list[Comment]]:
-        response = self._get(f"comments/{submission_id}", {"limit": 500})
-        comments_data = response[1]["data"]["children"] 
+    async def stream_submission_comments(self: "RedditClient", submission_id: str) -> AsyncIterator[list[Comment]]:
+        response = await self._get(f"comments/{submission_id}", {"limit": 500})
+        comments_data = response[1]["data"]["children"]
 
         comments = [
             self._to_comment(c["data"])
@@ -69,48 +115,51 @@ class RedditClient:
         if comments:
             yield comments
 
-    def stream_user_comments(self: "RedditClient", username: str) -> Iterator[list[Comment]]:
+    async def stream_user_comments(self: "RedditClient", username: str) -> AsyncIterator[list[Comment]]:
         after = None
+        count = 0
         while True:
             params = {"limit": 100}
             if after:
                 params["after"] = after
 
-            response = self._get(f"user/{username}/comments", params)
+            response = await self._get(f"user/{username}/comments", params)
             children = response["data"]["children"]
 
             if not children:
                 break
 
+            count += len(children)
+            logger.info(f"Fetched {count} submissions for a user")
             yield [self._to_comment(c["data"]) for c in children]
             after = response["data"].get("after")
 
             if not after:
                 break 
     
-    def fetch_submissions(self: "RedditClient", ids: list[str]) -> list[Submission]:
+    async def fetch_submissions(self: "RedditClient", ids: list[str]) -> list[Submission]:
         """Fetch submissions by ID (no prefix needed)."""
         if not ids:
             return []
-        fullnames = [f"t3_{id.split('_')[-1]}" for id in ids]  # Handle if prefix accidentally passed
-        subs, _ = self._fetch_bulk(fullnames)
+        fullnames = [f"t3_{id.split('_')[-1]}" for id in ids]
+        subs, _ = await self._fetch_bulk(fullnames)
         return subs
 
-    def fetch_comments(self: "RedditClient", ids: list[str]) -> list[Comment]:
+    async def fetch_comments(self: "RedditClient", ids: list[str]) -> list[Comment]:
         """Fetch comments by ID (no prefix needed)."""
         if not ids:
             return []
         fullnames = [f"t1_{id.split('_')[-1]}" for id in ids]
-        _, comments = self._fetch_bulk(fullnames)
+        _, comments = await self._fetch_bulk(fullnames)
         return comments
 
-    def _fetch_bulk(self: "RedditClient", ids: list[str]) -> tuple[list[Submission], list[Comment]]:
+    async def _fetch_bulk(self: "RedditClient", ids: list[str]) -> tuple[list[Submission], list[Comment]]:
         """Fetch up to 100 items per request - THE FAST PATH."""
         submissions, comments = [], []
 
         for i in range(0, len(ids), 100):
             chunk = ids[i:i + 100]
-            response = self._get("api/info", {"id": ",".join(chunk)})
+            response = await self._get("api/info", {"id": ",".join(chunk)})
 
             for item in response["data"]["children"]:
                 if item["kind"] == "t1":
@@ -119,18 +168,17 @@ class RedditClient:
                     submissions.append(self._to_submission(item["data"]))
         return submissions, comments
 
-    def fetch_comment(self: "RedditClient", comment_id: str) -> Comment | None:
-        response = self._get("api/info", {"id": f"t1_{comment_id}"})
+    async def fetch_comment(self: "RedditClient", comment_id: str) -> Comment | None:
+        response = await self._get("api/info", {"id": f"t1_{comment_id}"})
         children = response["data"]["children"]
         if children:
             return self._to_comment(children[0]["data"])
         return None
 
-    def fetch_submission(self: "RedditClient", submission_id: str) -> Submission | None:
+    async def fetch_submission(self: "RedditClient", submission_id: str) -> Submission | None:
         """Fetch submission metadata using api/info (lightweight, no comment tree)."""
-        # Strip prefix if present, then add t3_
         clean_id = submission_id.split("_")[-1]
-        response = self._get("api/info", {"id": f"t3_{clean_id}"})
+        response = await self._get("api/info", {"id": f"t3_{clean_id}"})
         children = response["data"]["children"]
         if children and children[0]["kind"] == "t3":
             return self._to_submission(children[0]["data"])
@@ -175,18 +223,23 @@ class RedditClient:
             created_utc=int(comment['created_utc']) if comment.get('created_utc') is not None else None
         )
     
-    def _get(self: "RedditClient", endpoint: str, params: dict = None, _retry: bool = False) -> dict:
+    async def _get(self, endpoint: str, params: dict = None, _retry: bool = False) -> dict:
+        await self._ensure_auth()
+
         # Refresh token if about to expire (60s buffer)
         if self.authenticated and time.time() > self._token_expires_at - 60:
-            self._authenticate()
+            await self._authenticate()
+
+        # Shared rate limiting - wait for slot before request
+        await self._rate_limiter.acquire()
 
         url = f"{self.base_url}/{endpoint}.json"
-        response = self.session.get(url, params=params)
+        response = await self.client.get(url, params=params)
 
         # Handle 401 - token expired, refresh and retry once
         if response.status_code == 401 and self.authenticated and not _retry:
-            self._authenticate()
-            return self._get(endpoint, params, _retry=True)
+            await self._authenticate()
+            return await self._get(endpoint, params, _retry=True)
 
         # Handle 429 - rate limited, raise exception for caller to handle
         if response.status_code == 429:
@@ -196,30 +249,30 @@ class RedditClient:
 
         response.raise_for_status()
 
-        # Proactive rate limiting based on headers (for non-authenticated)
+        # Additional backoff if running low on quota
         remaining = response.headers.get("X-Ratelimit-Remaining")
         reset = response.headers.get("X-Ratelimit-Reset")
 
-        if remaining is None or reset is None:
-            # No headers = unauthenticated, use fixed delay
-            time.sleep(self.rate_limit)
-        elif float(remaining) < 3:
-            # Running low, wait for reset
-            time.sleep(float(reset) if reset else 60)
+        if remaining is not None and float(remaining) < 3:
+            await asyncio.sleep(float(reset) if reset else 60)
 
         return response.json()
 
-
-    def _authenticate(self: "RedditClient") -> None:
+    async def _authenticate(self: "RedditClient") -> None:
         """Fetch or refresh OAuth token."""
-        auth = HTTPBasicAuth(self._reddit_id, self._reddit_secret)
-        response = requests.post(
+        credentials = base64.b64encode(f"{self._reddit_id}:{self._reddit_secret}".encode()).decode()
+        response = await self.client.post(
             "https://www.reddit.com/api/v1/access_token",
-            auth=auth,
-            data={"grant_type": "client_credentials"},
-            headers={"User-Agent": self.session.headers["User-Agent"]}
+            headers={
+                "Authorization": f"Basic {credentials}",
+                "User-Agent": self.user_agent
+            },
+            data={"grant_type": "client_credentials"}
         )
         response.raise_for_status()
         data = response.json()
-        self.session.headers["Authorization"] = f"Bearer {data['access_token']}"
+        self.client.headers["Authorization"] = f"Bearer {data['access_token']}"
         self._token_expires_at = time.time() + data.get("expires_in", 3600)
+
+    async def close(self):
+        await self.client.aclose()

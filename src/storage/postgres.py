@@ -1,9 +1,11 @@
 import os
 import logging
+from dataclasses import asdict
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.sql import func
 
 from src.storage.models import Submission, Comment, UserContributionCacheStatus, ThreadCacheStatus
 
@@ -124,6 +126,119 @@ class PostgresStore:
         query = select(Comment.id).where(Comment.id.in_(ids))
         return set(self.session.scalars(query).all())
 
+
+    def upsert_submissions(self: "PostgresStore", submissions: list[Submission]) -> int:
+        """Upsert submissions - bulk insert with conflict handling."""
+        if not submissions:
+            return 0
+
+        values_list = []
+        for sub in submissions:
+            values = asdict(sub)
+            values['fetched_at'] = func.now()
+            values_list.append(values)
+
+        stmt = insert(Submission).values(values_list).on_conflict_do_update(
+            index_elements=['id'],
+            set_={
+                'raw_json': insert(Submission).excluded.raw_json,
+                'score': insert(Submission).excluded.score,
+                'ups': insert(Submission).excluded.ups,
+                'upvote_ratio': insert(Submission).excluded.upvote_ratio,
+                'num_comments': insert(Submission).excluded.num_comments,
+                'is_deleted': insert(Submission).excluded.is_deleted,
+                'is_archived': insert(Submission).excluded.is_archived,
+                'fetched_at': insert(Submission).excluded.fetched_at,
+            }
+        )
+        self.session.execute(stmt)
+        self.session.commit()
+        logger.info(f"Upserted {len(submissions)} submissions")
+        return len(submissions)
+
+    def upsert_comments(self: "PostgresStore", comments: list[Comment]) -> int:
+        """Upsert comments - bulk insert with conflict handling."""
+        if not comments:
+            return 0
+
+        values_list = []
+        for com in comments:
+            values = asdict(com)
+            values['fetched_at'] = func.now()
+            values_list.append(values)
+
+        stmt = insert(Comment).values(values_list).on_conflict_do_update(
+            index_elements=['id'],
+            set_={
+                'raw_json': insert(Comment).excluded.raw_json,
+                'score': insert(Comment).excluded.score,
+                'ups': insert(Comment).excluded.ups,
+                'is_deleted': insert(Comment).excluded.is_deleted,
+                'is_archived': insert(Comment).excluded.is_archived,
+                'fetched_at': insert(Comment).excluded.fetched_at,
+            }
+        )
+        self.session.execute(stmt)
+        self.session.commit()
+        logger.info(f"Upserted {len(comments)} comments")
+        return len(comments)
+
+    def mark_submissions_deleted(self, ids: set[str]) -> None:
+        """Mark submissions as deleted (in archive but not on Reddit)."""
+        if not ids:
+            return
+        self.session.query(Submission).filter(Submission.id.in_(ids)).update(
+            {'is_deleted': True}, synchronize_session=False
+        )
+        self.session.commit()
+
+    def mark_comments_deleted(self, ids: set[str]) -> None:
+        """Mark comments as deleted (in archive but not on Reddit)."""
+        if not ids:
+            return
+        self.session.query(Comment).filter(Comment.id.in_(ids)).update(
+            {'is_deleted': True}, synchronize_session=False
+        )
+        self.session.commit()
+
+    def mark_submissions_not_archived(self, ids: set[str]) -> None:
+        """Mark submissions as not archived (on Reddit but not in archive yet)."""
+        if not ids:
+            return
+        self.session.query(Submission).filter(Submission.id.in_(ids)).update(
+            {'is_archived': False}, synchronize_session=False
+        )
+        self.session.commit()
+
+    def mark_comments_not_archived(self, ids: set[str]) -> None:
+        """Mark comments as not archived (on Reddit but not in archive yet)."""
+        if not ids:
+            return
+        self.session.query(Comment).filter(Comment.id.in_(ids)).update(
+            {'is_archived': False}, synchronize_session=False
+        )
+        self.session.commit()
+
+    def get_user_comment_relations(self, username: str) -> list[tuple[str, str, str]]:
+        """Returns [(id, parent_id, submission_id), ...] for a user's comments"""
+        query = select(Comment.id, Comment.parent_id, Comment.submission_id).where(
+            Comment.author == username
+        )
+        return self.session.execute(query).all()
+
+    def get_comment_relations(self, ids: list[str]) -> list[tuple[str, str, str]]:
+        """Returns [(id, parent_id, submission_id), ...] for given comment IDs"""
+        if not ids:
+            return []
+        query = select(Comment.id, Comment.parent_id, Comment.submission_id).where(
+            Comment.id.in_(ids)
+        )
+        return self.session.execute(query).all()
+
+    def get_user_submission_ids(self, username: str) -> set[str]:
+        """Returns set of submission IDs for a user"""
+        query = select(Submission.id).where(Submission.author == username)
+        return set(self.session.scalars(query).all())
 
     def close(self: "PostgresStore"):
         self.session.close()

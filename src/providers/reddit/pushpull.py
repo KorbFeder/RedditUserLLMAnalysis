@@ -1,41 +1,70 @@
-import requests
+import httpx
+import asyncio
 import time
 import logging
-from typing import Iterator
+from typing import AsyncIterator
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.storage.models import Submission, Comment
 
 logger = logging.getLogger(__name__)
 
+
+class AsyncRateLimiter:
+    """Shared rate limiter that ensures minimum delay between requests."""
+
+    def __init__(self, min_delay: float):
+        self.min_delay = min_delay
+        self.lock = asyncio.Lock()
+        self.last_request = 0.0
+
+    async def acquire(self):
+        """Wait until we can make a request without violating rate limit."""
+        async with self.lock:
+            now = time.time()
+            elapsed = now - self.last_request
+            wait_time = self.min_delay - elapsed
+
+            if wait_time > 0:
+                await asyncio.sleep(wait_time)
+
+            self.last_request = time.time()
+
+
 class PullPushClient:
     """Implements RedditSource for the PullPush.io API"""
 
     API_URL = "https://api.pullpush.io/reddit/search"
 
-    def __init__(self: "PullPushClient", config: dict):
+    # Shared rate limiter across all instances
+    _rate_limiter: AsyncRateLimiter | None = None
+
+    def __init__(self, config: dict):
         pushpull_config = config['reddit_api']['pushpull']
-        self.rate_limit: float = pushpull_config['rate_limit']
         self.batch_size: int = pushpull_config['batch_size']
-    
+        self.client = httpx.AsyncClient()
+
+        # Initialize shared rate limiter once
+        if PullPushClient._rate_limiter is None:
+            rate_limit = pushpull_config['rate_limit']
+            PullPushClient._rate_limiter = AsyncRateLimiter(rate_limit)
+
     @property
-    def source_name(self: "PullPushClient") -> str: 
+    def source_name(self) -> str:
         return "pushpull"
-    
-    @retry(          
+
+    @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type(requests.RequestException)
+        retry=retry_if_exception_type(httpx.HTTPError)
     )
-    def api_request(self: "PullPushClient", endpoint: str, params: dict):
-        response = requests.get(f"{self.API_URL}/{endpoint}/", params=params)
+    async def api_request(self, endpoint: str, params: dict):
+        await self._rate_limiter.acquire()  # Shared rate limiting
+        response = await self.client.get(f"{self.API_URL}/{endpoint}/", params=params)
         response.raise_for_status()
-
-        time.sleep(self.rate_limit)
-
         return response.json()
 
-    def stream_user_submissions(self: "PullPushClient", username: str) -> Iterator[list[Submission]]:
+    async def stream_user_submissions(self: "PullPushClient", username: str) -> AsyncIterator[list[Submission]]:
         params = {
           "author": username,
           "size": self.batch_size,
@@ -47,7 +76,8 @@ class PullPushClient:
         count = 0
 
         while True:
-            current_submissions = self.api_request('submission', params).get('data', [])
+            response = await self.api_request('submission', params)
+            current_submissions = response.get('data', [])
 
             if not current_submissions:
                 break
@@ -58,7 +88,7 @@ class PullPushClient:
             logger.info(f"Fetched {count} submissions for a user")
             yield [self._to_submission(submission) for submission in current_submissions]
 
-    def stream_user_comments(self: "PullPushClient", username: str) -> Iterator[list[Comment]]:
+    async def stream_user_comments(self: "PullPushClient", username: str) -> AsyncIterator[list[Comment]]:
         params = {
           "author": username,
           "size": self.batch_size,
@@ -70,8 +100,8 @@ class PullPushClient:
         count = 0
 
         while True:
-
-            current_comments = self.api_request('comment', params).get('data', [])
+            response = await self.api_request('comment', params)
+            current_comments = response.get('data', [])
 
             if not current_comments:
                 break
@@ -82,8 +112,7 @@ class PullPushClient:
             logger.info(f"Fetched {count} comments for a user")
             yield [self._to_comment(comment) for comment in current_comments]
 
-
-    def stream_submission_comments(self: "PullPushClient", submission_id: str) -> Iterator[list[Comment]]:
+    async def stream_submission_comments(self: "PullPushClient", submission_id: str) -> AsyncIterator[list[Comment]]:
         params = {
           "link_id": submission_id,
           "size": self.batch_size,
@@ -95,8 +124,8 @@ class PullPushClient:
         count = 0
 
         while True:
-
-            current_comments = self.api_request('comment', params).get('data', [])
+            response = await self.api_request('comment', params)
+            current_comments = response.get('data', [])
 
             if not current_comments:
                 break
@@ -107,45 +136,49 @@ class PullPushClient:
             logger.info(f"Fetched {count} comments from a submission")
             yield [self._to_comment(comment) for comment in current_comments]
 
-
-    def fetch_comment(self: "PullPushClient", comment_id: str) -> Comment | None:
+    async def fetch_comment(self: "PullPushClient", comment_id: str) -> Comment | None:
         params = {'id': comment_id}
+        response = await self.api_request('comment', params)
+        data = response.get('data', [])
 
-        _comment = self.api_request('comment', params).get('data', [])
-
-        if not _comment:
+        if not data:
             return None
+        return self._to_comment(data[0])
 
-        comment = _comment[0]
-
-        return self._to_comment(comment)
-
-    def fetch_submission(self: "PullPushClient", submission_id: str) -> Submission | None:
+    async def fetch_submission(self: "PullPushClient", submission_id: str) -> Submission | None:
         params = {'id': submission_id}
+        response = await self.api_request('submission', params)
+        data = response.get('data', [])
 
-        _submission = self.api_request('submission', params).get('data', [])
-
-        if not _submission:
+        if not data:
             return None
+        return self._to_submission(data[0])
 
-        submission = _submission[0]
-
-        return self._to_submission(submission)
-
-    def fetch_submissions(self: "PullPushClient", ids: list[str]) -> list[Submission]:
+    async def fetch_submissions(self: "PullPushClient", ids: list[str]) -> list[Submission]:
         results = []
         for id in ids:
-            sub = self.fetch_submission(id.split('_')[-1])
+            sub = await self.fetch_submission(id.split('_')[-1])
             if sub:
                 results.append(sub)
         return results
 
-    def fetch_comments(self: "PullPushClient", ids: list[str]) -> list[Comment]:
+    async def fetch_comments(self: "PullPushClient", ids: list[str]) -> list[Comment]:
+        """Fetch comments by IDs using bulk API (comma-separated ids parameter)."""
+        if not ids:
+            return []
+
         results = []
-        for id in ids:
-            comment = self.fetch_comment(id.split('_')[-1])
-            if comment:
-                results.append(comment)
+        clean_ids = [id.split('_')[-1] for id in ids]
+
+        # PullPush supports up to ~100 IDs per request
+        for i in range(0, len(clean_ids), 100):
+            chunk = clean_ids[i:i + 100]
+            params = {'ids': ','.join(chunk)}
+            response = await self.api_request('comment', params)
+            data = response.get('data', [])
+            results.extend(self._to_comment(c) for c in data)
+
+        logger.info(f"PullPush: fetched {len(results)}/{len(ids)} comments")
         return results
 
 
@@ -186,3 +219,6 @@ class PullPushClient:
             all_awardings=comment.get('all_awardings'),
             created_utc=int(comment['created_utc']) if comment.get('created_utc') is not None else None
         )
+
+    async def close(self):
+        await self.client.aclose()
