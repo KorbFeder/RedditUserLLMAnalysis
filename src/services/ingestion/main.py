@@ -4,6 +4,9 @@ from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from src.services.ingestion.ingestion import IngestionService
 from src.helpers.settings import load_config
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,3 @@ async def ingestion_handler(username: str):
         return username
     finally:
         await ingestion_service.close()
-
-#if __name__ == "__main__":
-#    pass
