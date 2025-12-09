@@ -26,4 +26,4 @@ COPY config/ ./config/
 ENV PYTHONPATH=/app
 
 # Run the ingestion worker
-CMD ["python", "-m", "src.services.ingestion.main"]
+CMD ["faststream", "run", "src.services.ingestion.main:app"]
