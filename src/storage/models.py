@@ -2,7 +2,8 @@ from datetime import datetime
 
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, MappedAsDataclass
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import func
+from sqlalchemy import func, UniqueConstraint
+from pgvector.sqlalchemy import Vector
 
 class Base(MappedAsDataclass, DeclarativeBase):
     pass
@@ -66,6 +67,18 @@ class ThreadCacheStatus(Base):
     submission_id: Mapped[str] = mapped_column(primary_key=True)
     newest_item_cursor: Mapped[int | None] = mapped_column(default=None)
     is_history_complete: Mapped[bool] = mapped_column(default=False)
+
+
+class Embedding(Base):
+    __tablename__ = 'embeddings'
+    id: Mapped[int] = mapped_column(primary_key=True, init=False)
+    content_id: Mapped[str]
+    content_type: Mapped[str]
+    embedding = mapped_column(Vector(768), default=None)
+
+    __table_args__ = (
+        UniqueConstraint('content_id', 'content_type'),
+    )
 
 
 

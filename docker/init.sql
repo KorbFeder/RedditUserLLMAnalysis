@@ -57,3 +57,25 @@ CREATE INDEX idx_comments_submission_id ON comments(submission_id);
 CREATE INDEX idx_comments_author ON comments(author);
 CREATE INDEX idx_comments_parent_id ON comments(parent_id);
 CREATE INDEX idx_comments_created_utc ON comments(created_utc);
+
+-- Embeddings table for pgvector
+CREATE TABLE embeddings (
+    id SERIAL PRIMARY KEY,
+    content_id TEXT NOT NULL,
+    content_type TEXT NOT NULL CHECK (content_type IN ('submission', 'comment')),
+    embedding vector(768),
+    UNIQUE(content_id, content_type)
+);
+
+-- Vector similarity search index (HNSW)
+CREATE INDEX idx_embeddings_vector ON embeddings USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_embeddings_content ON embeddings(content_id, content_type);
+
+-- Full-text search for hybrid search
+ALTER TABLE submissions ADD COLUMN search_vector tsvector
+    GENERATED ALWAYS AS (to_tsvector('english', coalesce(title, '') || ' ' || coalesce(selftext, ''))) STORED;
+ALTER TABLE comments ADD COLUMN search_vector tsvector
+    GENERATED ALWAYS AS (to_tsvector('english', coalesce(body, ''))) STORED;
+
+CREATE INDEX idx_submissions_fts ON submissions USING GIN (search_vector);
+CREATE INDEX idx_comments_fts ON comments USING GIN (search_vector);

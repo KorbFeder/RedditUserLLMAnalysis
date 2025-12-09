@@ -1,11 +1,6 @@
 from src.storage.models import Comment, Submission
-from typing import TypedDict
+from src.storage.vectorstore.base import ContentType
 from dataclasses import dataclass
-from enum import Enum
-
-class DocumentType(Enum):
-    SUBMISSION = 'submission'
-    COMMENT = 'comment'
 
 @dataclass
 class DocumentMetadata:
