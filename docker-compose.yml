@@ -11,6 +11,45 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reddit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: src/services/ingestion/Dockerfile
+    container_name: ingestion_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-reddit}:${POSTGRES_PASSWORD:-reddit}@db:5432/${POSTGRES_DB:-reddit_analysis}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
+    volumes:
+      - ./config:/app/config
 
 volumes:
   pgdata:
+  rabbitmq_data:

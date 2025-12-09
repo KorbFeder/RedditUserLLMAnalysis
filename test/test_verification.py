@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
-from src.providers.reddit.pushpull import PullPushClient
+from src.reddit_providers.pushpull import PullPushClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

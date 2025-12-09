@@ -3,8 +3,8 @@ import asyncio
 from typing import AsyncIterator
 
 from src.storage.postgres import PostgresStore
-from src.providers.reddit.reddit import RedditClient
-from src.providers.reddit.pushpull import PullPushClient
+from src.reddit_providers.reddit import RedditClient
+from src.reddit_providers.pushpull import PullPushClient
 from src.storage.models import Submission, Comment, UserContributionCacheStatus
 
 logger = logging.getLogger(__name__)

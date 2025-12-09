@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 
 from src.storage.models import Comment, Submission
-from src.rag.tree import CommentNode, order_comments
+from src.services.vectorizer.rag.tree import CommentNode, order_comments
 # Note: ThreadMetadata was removed - this file may be deprecated
 
 logger = logging.getLogger(__name__)

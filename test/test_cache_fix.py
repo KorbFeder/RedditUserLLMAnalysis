@@ -20,7 +20,7 @@ load_dotenv()
 
 from services.data_service import DataService, CacheConfig
 from src.storage.postgres import PostgresStore
-from src.providers.reddit.pushpull import PullPushClient
+from src.reddit_providers.pushpull import PullPushClient
 from src.storage.models import Submission, Comment, UserContributionCacheStatus, ThreadCacheStatus
 
 logging.basicConfig(level=logging.INFO)

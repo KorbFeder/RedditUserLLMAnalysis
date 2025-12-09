@@ -2,12 +2,11 @@ from langgraph.graph import StateGraph, START, END
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 
-from src.providers.llm.openrouter import get_model
-from src.services.vectorizer import Vectorizer
+from src.services.agent.providers.llm.openrouter import get_model
+from src.services.vectorizer.vectorizer import Vectorizer
 from src.helpers.settings import load_config
-from src.agents.tools import search_users_reddit_contributions
-from src.services.data_service import DataService
-from src.services.ingestion import IngestionService
+from src.services.agent.tools import search_users_reddit_contributions
+from src.services.ingestion.ingestion import IngestionService
 
 from typing import TypedDict
 

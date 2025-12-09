@@ -3,16 +3,16 @@ from datetime import datetime
 from dataclasses import asdict
 from tqdm import tqdm
 
-from src.services.data_service import DataService
+from src.storage.postgres import PostgresStore
 from src.storage.chroma import VectorStore
 from src.storage.models import Submission, Comment
-from src.rag.chunking import DocumentBuilder, DocumentMetadata, DocumentType
+from src.services.vectorizer.rag.chunking import DocumentBuilder, DocumentMetadata, DocumentType
 
 logger = logging.getLogger(__name__)
 
 class Vectorizer:
     def __init__(self: "Vectorizer", config: dict):
-        self.reddit_repo = DataService(config)
+        self.cache = PostgresStore()
         self.db = VectorStore()
         self.small_to_large = DocumentBuilder()
 

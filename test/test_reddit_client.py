@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
-from src.providers.reddit.reddit import RedditClient
-from src.providers.reddit.pushpull import PullPushClient
+from src.reddit_providers.reddit import RedditClient
+from src.reddit_providers.pushpull import PullPushClient
 from src.storage.models import Submission, Comment
 
 logging.basicConfig(level=logging.INFO)

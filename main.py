@@ -2,7 +2,7 @@ import asyncio
 import logging
 from dotenv import load_dotenv
 
-from src.agents.sentiment import run
+from src.services.agent.sentiment import run
 
 load_dotenv()
 
