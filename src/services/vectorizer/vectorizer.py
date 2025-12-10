@@ -77,8 +77,21 @@ class Vectorizer:
             content_types.append(ContentType.SUBMISSION)
             docs.append(doc)
 
-        logger.info(f"Embedding {len(submissions)} submissions, {len(comments)} comments")
-        self.vector_store.add(ids, content_types, docs)
+        total_items = len(ids)
+        batch_size = self.config.get("embedding", {}).get("batch_size", 100)
+        total_batches = (total_items + batch_size - 1) // batch_size
+
+        logger.info(f"Embedding {len(submissions)} submissions, {len(comments)} comments in {total_batches} batches")
+
+        for i in range(0, total_items, batch_size):
+            batch_num = i // batch_size + 1
+            batch_ids = ids[i:i + batch_size]
+            batch_types = content_types[i:i + batch_size]
+            batch_docs = docs[i:i + batch_size]
+
+            self.vector_store.add(batch_ids, batch_types, batch_docs)
+            logger.info(f"Batch {batch_num}/{total_batches} complete ({len(batch_ids)} items)")
+
         logger.info(f"Embedding sync complete for user: {username}")
 
         return {"submissions": len(submissions), "comments": len(comments)}

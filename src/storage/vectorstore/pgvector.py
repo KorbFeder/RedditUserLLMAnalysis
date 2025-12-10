@@ -29,7 +29,7 @@ class PgVectorStore:
 
     def _embed(self: "PgVectorStore", texts: list[str], prefix: str = "") -> list[list[float]]:
         prefixed = [f"{prefix}{t}" for t in texts]
-        embeddings = self.model.encode(prefixed)
+        embeddings = self.model.encode(prefixed, batch_size=64, show_progress_bar=False)
         return embeddings.tolist()
 
     def add(self: "PgVectorStore", content_ids: list[str], content_types: list[ContentType], texts: list[str]) -> int:

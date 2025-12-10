@@ -2,6 +2,7 @@ embedding:
   model_name: "nomic-ai/nomic-embed-text-v1.5"
   document_prefix: "search_document: "
   query_prefix: "search_query: "
+  batch_size: 100
 
 search:
   dense_limit: 20

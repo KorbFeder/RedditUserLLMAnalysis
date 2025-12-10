@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
@@ -23,11 +24,16 @@ app = FastStream(broker)
 @broker.publisher("agent")
 async def vectorization_handler(username: str):
     logger.info(f"Starting vectorization for {username}")
-    config = load_config()
-    vectorizer = Vectorizer(config)
-    try:
-        result = vectorizer.sync_embeddings(username)
-        logger.info(f"Vectorization complete: {result}")
-        return username
-    finally:
-        vectorizer.close()
+
+    def run_vectorization():
+        """Run in thread pool - creates all DB resources in worker thread for thread safety."""
+        config = load_config()
+        vectorizer = Vectorizer(config)
+        try:
+            return vectorizer.sync_embeddings(username)
+        finally:
+            vectorizer.close()
+
+    result = await asyncio.to_thread(run_vectorization)
+    logger.info(f"Vectorization complete: {result}")
+    return username
