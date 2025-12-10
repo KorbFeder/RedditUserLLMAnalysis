@@ -1,128 +1,88 @@
+import os
 import logging
-from datetime import datetime
-from dataclasses import asdict
-from tqdm import tqdm
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from src.storage.postgres import PostgresStore
-from src.storage.chroma import VectorStore
+from src.storage.vectorstore.pgvector import PgVectorStore
+from src.storage.vectorstore.base import ContentType
 from src.storage.models import Submission, Comment
-from src.services.vectorizer.rag.chunking import DocumentBuilder, DocumentMetadata, DocumentType
+from src.services.vectorizer.rag.chunking import DocumentBuilder
 
 logger = logging.getLogger(__name__)
 
 class Vectorizer:
     def __init__(self: "Vectorizer", config: dict):
-        self.cache = PostgresStore()
-        self.db = VectorStore()
+        engine = create_engine(os.getenv('DATABASE_URL'))
+        Session = sessionmaker(bind=engine)
+        self.session = Session()
+
+        self.store = PostgresStore(self.session)
+        self.vector_store = PgVectorStore(config, self.session)
         self.small_to_large = DocumentBuilder()
+        self.config = config
 
-    def store_user_data(self: "Vectorizer", username: str):
-        submissions, comments = self.reddit_repo.get_user_contributions(username)
+    def sync_embeddings(self: "Vectorizer", username: str) -> dict:
+        logger.info(f"Starting embedding sync for user: {username}")
 
-        thread_ids = list(dict.fromkeys(
-            [submission.id for submission in submissions] +
-            [comment.submission_id for comment in comments if comment.submission_id]
-        ))
+        submissions: list[Submission] = self.store.get_users_submissions(username)
+        comments: list[Comment] = self.store.get_users_comments(username)
+        submission_ids = [submission.id for submission in submissions]
+        comment_ids = [comment.id for comment in comments]
 
-        threads_stored = 0
+        logger.info(f"Found {len(submissions)} submissions, {len(comments)} comments")
 
-        for thread_id in thread_ids:
-            thread = self.reddit_repo.get_thread(thread_id)
+        existing_submission_ids = self.vector_store.get_existing_ids(submission_ids, ContentType.SUBMISSION)
+        existing_comment_ids = self.vector_store.get_existing_ids(comment_ids, ContentType.COMMENT)
 
-            if thread is None:
-                logger.info(f"The thread {thread_id} is None!")
-                continue
+        new_submission_ids = set(submission_ids) - existing_submission_ids
+        new_comment_ids = set(comment_ids) - existing_comment_ids
 
+        logger.info(f"Skipping {len(existing_submission_ids)} existing submissions, {len(existing_comment_ids)} existing comments")
 
-            logger.info(f"Submission/Post {threads_stored} of {len(thread_ids)} sumissions/posts")
-            logger.info(f"storing the full thread with thread id: {thread_id} in the database")
-            threads_stored += 1
- 
-    
-    def fill_vector_db(self: "Vectorizer", username: str):
-        submissions, comments = self.reddit_repo.get_user_contributions(username)
+        submissions = [submission for submission in submissions if submission.id in new_submission_ids]
+        comments = [comment for comment in comments if comment.id in new_comment_ids]
 
-        # filter out submission already stored in the vector db
-        existing_ids = set(self.db.elements_exist_check([s.id for s in submissions]))
-        submissions = [submission for submission in submissions if submission.id not in existing_ids]
-        logger.info(f"Skipping {len(existing_ids)} existing, inserting {len(submissions)} new submissions")
+        if not submissions and not comments:
+            logger.info("No new content to embed")
+            return {"submissions": 0, "comments": 0}
 
-        id_batch = []
-        doc_batch = []
-        metadata_batch = []
-        logger.info(f"Fetched Submissions and Comment now filling Vector database with {len(submissions)} submissions and {len(comments)} comments")
-        for submission in tqdm(submissions):
-            doc = self.small_to_large.submission(submission)
-            metadata = DocumentMetadata(
-                id=submission.id,
-                document_type=DocumentType.SUBMISSION.value,
-                submission_id=submission.id,
-                parent_id="",
-                username=username,
-                parent_author="",
-                subreddit=submission.subreddit or "",
-                post_title=submission.title or "",
-                created_utc=submission.created_utc or 0,
-                score=submission.score or 0,
-                is_top_level=False,
-                num_comments=submission.num_comments or 0,
-                upvote_ratio=submission.upvote_ratio or 0.0
-            )
-            id_batch.append(submission.id)
-            doc_batch.append("\n".join(doc))
-            metadata_batch.append(asdict(metadata))
-
-        before = self.db.get_element_count()
-        self.db.add_elements(id_batch, doc_batch, metadata_batch)
-        after = self.db.get_element_count()
-
-        logger.info("Added all submissions to the vector database moving on to comments")
-        logger.info(f"Nr of elements in vectordb before: {before} and now afterwards: {after}")
-
-        # filter comments
-        existing_ids = set(self.db.elements_exist_check([c.id for c in comments]))
-        comments = [comment for comment in comments if comment.id not in existing_ids]
-        logger.info(f"Skipping {len(existing_ids)} existing, inserting {len(comments)} new comments")
-
-        id_batch = []
-        doc_batch = []
-        metadata_batch = []
-
-        submission_ids = list(set(c.submission_id for c in comments if c.submission_id))
-        submissions = {s.id: s for s in self.reddit_repo.cache.get_submissions(submission_ids)}
+        submission_ids_for_comments = [c.submission_id for c in comments if c.submission_id]
         parent_ids = [c.parent_id for c in comments if c.parent_id]
-        parent_comments = {c.id: c for c in self.reddit_repo.cache.get_comments(parent_ids)}
 
-        for comment in tqdm(comments):
-            parent_comment = parent_comments.get(comment.parent_id)
-            submission =  submissions.get(comment.submission_id)
-            
-            if submission is None:
-                logger.warning(f"Could not find submission {comment.submission_id} for comment {comment.id}")
+        submissions_by_id = {s.id: s for s in self.store.get_submissions(submission_ids_for_comments)}
+        parents_by_id = {c.id: c for c in self.store.get_comments(parent_ids)}
+
+        docs = []
+        content_types = []
+        ids = []
+
+        for comment in comments:
+            submission = submissions_by_id.get(comment.submission_id)
+            if not submission:
+                logger.warning(f"Missing submission {comment.submission_id} for comment {comment.id}")
                 continue
+            parent = parents_by_id.get(comment.parent_id)
+            doc = self.small_to_large.comment(submission, comment, parent)
 
-            # maybe a batch fetch here cause of speed
-            doc = self.small_to_large.comment(submission, comment, parent_comment)
+            ids.append(comment.id)
+            content_types.append(ContentType.COMMENT)
+            docs.append(doc)
 
-            metadata = DocumentMetadata(
-                id=comment.id,
-                document_type=DocumentType.COMMENT.value,
-                submission_id=submission.id,
-                parent_id=comment.parent_id or "",
-                username=username,
-                parent_author=parent_comment.author if parent_comment else "",
-                subreddit=submission.subreddit or "",
-                post_title=submission.title or "",
-                created_utc=comment.created_utc or 0,
-                score=comment.score or 0,
-                is_top_level=False if parent_comment else True,
-                num_comments=0,
-                upvote_ratio=0.0
-            )           
-            id_batch.append(comment.id)
-            doc_batch.append("\n".join(doc))
-            metadata_batch.append(asdict(metadata))
+        for submission in submissions:
+            doc = self.small_to_large.submission(submission)
 
-        self.db.add_elements(id_batch, doc_batch, metadata_batch)
-        
+            ids.append(submission.id)
+            content_types.append(ContentType.SUBMISSION)
+            docs.append(doc)
+
+        logger.info(f"Embedding {len(submissions)} submissions, {len(comments)} comments")
+        self.vector_store.add(ids, content_types, docs)
+        logger.info(f"Embedding sync complete for user: {username}")
+
+        return {"submissions": len(submissions), "comments": len(comments)}
+
+    def close(self: "Vectorizer"):
+        self.session.close()
 

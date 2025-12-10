@@ -12,14 +12,19 @@ from src.storage.models import Submission, Comment, UserContributionCacheStatus,
 logger = logging.getLogger(__name__)
 
 class PostgresStore:
-    def __init__(self):
-        url = os.getenv('DATABASE_URL')
-        if not url:
-            logger.error("DATABASE_URL environment variable not set")
-            raise ValueError("DATABASE_URL environment variable not set")
-        engine = create_engine(url)
-        Session = sessionmaker(bind=engine)
-        self.session = Session()
+    def __init__(self, session=None):
+        if session:
+            self.session = session
+            self._owns_session = False
+        else:
+            url = os.getenv('DATABASE_URL')
+            if not url:
+                logger.error("DATABASE_URL environment variable not set")
+                raise ValueError("DATABASE_URL environment variable not set")
+            engine = create_engine(url)
+            Session = sessionmaker(bind=engine)
+            self.session = Session()
+            self._owns_session = True
 
     def add_submissions(self: "PostgresStore", submissions: list[Submission]) -> None:
         if not submissions:
@@ -241,4 +246,5 @@ class PostgresStore:
         return set(self.session.scalars(query).all())
 
     def close(self: "PostgresStore"):
-        self.session.close()
+        if self._owns_session:
+            self.session.close()

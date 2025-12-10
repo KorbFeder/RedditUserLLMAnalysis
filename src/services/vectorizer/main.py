@@ -3,6 +3,7 @@ import logging
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from src.helpers.settings import load_config
+from src.services.vectorizer.vectorizer import Vectorizer
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,6 +22,12 @@ app = FastStream(broker)
 @broker.subscriber("vectorizer")
 @broker.publisher("agent")
 async def vectorization_handler(username: str):
-    logging.info(f"Starting Ingestion for {username}")
+    logger.info(f"Starting vectorization for {username}")
     config = load_config()
-    return username
+    vectorizer = Vectorizer(config)
+    try:
+        result = vectorizer.sync_embeddings(username)
+        logger.info(f"Vectorization complete: {result}")
+        return username
+    finally:
+        vectorizer.close()

@@ -3,6 +3,10 @@ embedding:
   document_prefix: "search_document: "
   query_prefix: "search_query: "
 
+search:
+  dense_limit: 20
+  sparse_limit: 20
+
 llm_model_name: "z-ai/glm-4.5-air:free"
 
 reddit_api:

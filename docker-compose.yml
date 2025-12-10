@@ -50,6 +50,22 @@ services:
     volumes:
       - ./config:/app/config
 
+  vectorizer:
+    build:
+      context: .
+      dockerfile: src/services/vectorizer/Dockerfile
+    container_name: vectorizer_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-reddit}:${POSTGRES_PASSWORD:-reddit}@db:5432/${POSTGRES_DB:-reddit_analysis}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
+    volumes:
+      - ./config:/app/config
+
 volumes:
   pgdata:
   rabbitmq_data:
