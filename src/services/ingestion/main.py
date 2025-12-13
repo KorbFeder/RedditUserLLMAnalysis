@@ -3,6 +3,9 @@ import logging
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from src.services.ingestion.ingestion import IngestionService
+from src.shared.job_messages import JobMessages, JobStatus
+from src.shared.session import create_db_session
+from src.storage.jobs import JobStore
 from src.helpers.settings import load_config
 from dotenv import load_dotenv
 
@@ -21,12 +24,22 @@ app = FastStream(broker)
 
 @broker.subscriber("ingestion")
 @broker.publisher("vectorizer")
-async def ingestion_handler(username: str):
-    logger.info(f"Starting Ingestion for {username}")
+async def ingestion_handler(msg: JobMessages):
+    logger.info(f"Starting Ingestion for {msg.username}")
     config = load_config()
-    ingestion_service = IngestionService(config)
+    session = create_db_session()
+    ingestion_service = IngestionService(config, session)
+    job_store = JobStore(session)
+    job_store.update_status(msg.job_id, 'ingestion', JobStatus.ACTIVE)
     try:
-        await ingestion_service.sync_users_comment_chain(username)
-        return username
+        await ingestion_service.sync_users_comment_chain(msg.username)
+        job_store.update_status(msg.job_id, 'ingestion', JobStatus.COMPLETED)
+        return msg
+    except Exception as e:
+        logger.error(f"Ingestion failed for {msg.username}: {e}")
+        job_store.update_status(msg.job_id, 'ingestion', JobStatus.FAILED, error=str(e))
+        raise
     finally:
         await ingestion_service.close()
+        session.close()
+

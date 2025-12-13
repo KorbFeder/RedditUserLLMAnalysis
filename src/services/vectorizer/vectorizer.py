@@ -2,7 +2,7 @@ import os
 import logging
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session
 
 from src.storage.postgres import PostgresStore
 from src.storage.vectorstore.pgvector import PgVectorStore
@@ -13,15 +13,13 @@ from src.services.vectorizer.rag.chunking import DocumentBuilder
 logger = logging.getLogger(__name__)
 
 class Vectorizer:
-    def __init__(self: "Vectorizer", config: dict):
-        engine = create_engine(os.getenv('DATABASE_URL'))
-        Session = sessionmaker(bind=engine)
-        self.session = Session()
+    def __init__(self: "Vectorizer", config: dict, session: Session):
+        self.session = session
+        self.config = config
 
         self.store = PostgresStore(self.session)
         self.vector_store = PgVectorStore(config, self.session)
         self.small_to_large = DocumentBuilder()
-        self.config = config
 
     def sync_embeddings(self: "Vectorizer", username: str) -> dict:
         logger.info(f"Starting embedding sync for user: {username}")
@@ -96,6 +94,5 @@ class Vectorizer:
 
         return {"submissions": len(submissions), "comments": len(comments)}
 
-    def close(self: "Vectorizer"):
-        self.session.close()
+
 

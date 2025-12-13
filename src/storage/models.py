@@ -1,8 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, MappedAsDataclass
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, MappedAsDataclass, relationship
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import func, UniqueConstraint
+from sqlalchemy import func, UniqueConstraint, ForeignKey
 from pgvector.sqlalchemy import Vector
 
 class Base(MappedAsDataclass, DeclarativeBase):
@@ -55,18 +55,37 @@ class Comment(Base):
 
     fetched_at: Mapped[datetime] = mapped_column(default=func.now(), init=False) 
 
+class Job(Base):
+    __tablename__ = 'jobs'
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    job_type: Mapped[str]
+    status: Mapped[str] = mapped_column(default="pending")
+    result: Mapped[str | None] = mapped_column(default=None)
+    error: Mapped[str | None] = mapped_column(default=None)
+
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now(), init=False)
+    created_utc: Mapped[datetime] = mapped_column(default=func.now(), init=False)
+
+    user_sentiment_job: Mapped["UserSentimentJob | None"] = relationship(
+        back_populates="job", default=None, init=False
+    )
+
+class UserSentimentJob(Base):
+    __tablename__ = 'user_sentiment_jobs'
+
+    job_id: Mapped[str] = mapped_column(ForeignKey('jobs.id'), primary_key=True)
+    username: Mapped[str]
+    question: Mapped[str]
+    service: Mapped[str] = mapped_column(default="pending")
+
+    job: Mapped["Job"] = relationship(back_populates="user_sentiment_job", default=None, init=False)
+
 class UserContributionCacheStatus(Base):
     __tablename__ = 'user_contribution_cache_status'
     username: Mapped[str] = mapped_column(primary_key=True)
     newest_submission_cursor: Mapped[int | None] = mapped_column(default=None)
     newest_comment_cursor: Mapped[int | None] = mapped_column(default=None)
-
-
-class ThreadCacheStatus(Base):
-    __tablename__ = 'thread_cache_status'
-    submission_id: Mapped[str] = mapped_column(primary_key=True)
-    newest_item_cursor: Mapped[int | None] = mapped_column(default=None)
-    is_history_complete: Mapped[bool] = mapped_column(default=False)
 
 
 class Embedding(Base):
@@ -79,6 +98,5 @@ class Embedding(Base):
     __table_args__ = (
         UniqueConstraint('content_id', 'content_type'),
     )
-
 
 

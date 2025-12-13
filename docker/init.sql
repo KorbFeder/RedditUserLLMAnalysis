@@ -37,10 +37,25 @@ CREATE TABLE comments (
     raw_json JSONB NOT NULL
 );
 
-CREATE TABLE thread_cache_status (
-    submission_id TEXT PRIMARY KEY,
-    newest_item_cursor BIGINT,
-    is_history_complete BOOLEAN NOT NULL DEFAULT FALSE
+CREATE TABLE jobs (
+    id TEXT PRIMARY KEY,
+    job_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    result TEXT,
+    error TEXT,
+    created_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_jobs_status ON jobs(status);
+CREATE INDEX idx_jobs_job_type ON jobs(job_type);
+CREATE INDEX idx_jobs_created_utc ON jobs(created_utc);
+
+CREATE TABLE user_sentiment_jobs (
+    job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    username TEXT NOT NULL,
+    question TEXT NOT NULL,
+    service TEXT NOT NULL DEFAULT 'pending'
 );
 
 CREATE TABLE user_contribution_cache_status (

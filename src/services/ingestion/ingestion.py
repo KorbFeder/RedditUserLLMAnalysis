@@ -1,6 +1,7 @@
 import logging
 import asyncio
 from typing import AsyncIterator
+from sqlalchemy.orm import Session
 
 from src.storage.postgres import PostgresStore
 from src.reddit_providers.reddit import RedditClient
@@ -10,8 +11,8 @@ from src.storage.models import Submission, Comment, UserContributionCacheStatus
 logger = logging.getLogger(__name__)
 
 class IngestionService:
-    def __init__(self: "IngestionService", config: dict):
-        self.db = PostgresStore()
+    def __init__(self: "IngestionService", config: dict, session: Session):
+        self.db = PostgresStore(session)
         self.push_pull = PullPushClient(config)
         self.reddit = RedditClient(config)
         
@@ -238,7 +239,6 @@ class IngestionService:
         return ids, newest_ts
 
     async def close(self):
-        """Close all client connections."""
+        """Close HTTP client connections."""
         await self.push_pull.close()
         await self.reddit.close()
-        self.db.close()

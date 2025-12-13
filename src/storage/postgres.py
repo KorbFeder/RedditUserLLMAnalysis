@@ -3,28 +3,17 @@ import logging
 from dataclasses import asdict
 
 from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import func
 
-from src.storage.models import Submission, Comment, UserContributionCacheStatus, ThreadCacheStatus
+from src.storage.models import Submission, Comment, UserContributionCacheStatus
 
 logger = logging.getLogger(__name__)
 
 class PostgresStore:
-    def __init__(self, session=None):
-        if session:
-            self.session = session
-            self._owns_session = False
-        else:
-            url = os.getenv('DATABASE_URL')
-            if not url:
-                logger.error("DATABASE_URL environment variable not set")
-                raise ValueError("DATABASE_URL environment variable not set")
-            engine = create_engine(url)
-            Session = sessionmaker(bind=engine)
-            self.session = Session()
-            self._owns_session = True
+    def __init__(self: "PostgresStore", session: Session):
+        self.session = session
 
     def add_submissions(self: "PostgresStore", submissions: list[Submission]) -> None:
         if not submissions:
@@ -61,10 +50,6 @@ class PostgresStore:
             self.session.commit()
 
         logger.info(f"Added {len(comments)} to the database (comment table)")
-
-    def upsert_thread_cache_status(self: "PostgresStore", thread_cache_status: ThreadCacheStatus):
-        self.session.merge(thread_cache_status)
-        self.session.commit()
 
     def upsert_user_cache_status(self: "PostgresStore", status: UserContributionCacheStatus):
         self.session.merge(status)
@@ -114,9 +99,6 @@ class PostgresStore:
     def get_user_cache_status(self: "PostgresStore", username: str):
         return self.session.get(UserContributionCacheStatus, username)
 
-    def get_thread_cache_status(self: "PostgresStore", submission_id: str):
-        return self.session.get(ThreadCacheStatus, submission_id)
- 
     def submissions_exist(self, ids: list[str]) -> set[str]:
         if not ids:
             return set()
@@ -245,6 +227,3 @@ class PostgresStore:
         query = select(Submission.id).where(Submission.author == username)
         return set(self.session.scalars(query).all())
 
-    def close(self: "PostgresStore"):
-        if self._owns_session:
-            self.session.close()
