@@ -68,7 +68,7 @@ class Job(Base):
     created_utc: Mapped[datetime] = mapped_column(default=func.now(), init=False)
 
     user_sentiment_job: Mapped["UserSentimentJob | None"] = relationship(
-        back_populates="job", default=None, init=False
+        default=None, init=False, lazy="joined"
     )
 
 class UserSentimentJob(Base):
@@ -78,8 +78,6 @@ class UserSentimentJob(Base):
     username: Mapped[str]
     question: Mapped[str]
     service: Mapped[str] = mapped_column(default="pending")
-
-    job: Mapped["Job"] = relationship(back_populates="user_sentiment_job", default=None, init=False)
 
 class UserContributionCacheStatus(Base):
     __tablename__ = 'user_contribution_cache_status'
