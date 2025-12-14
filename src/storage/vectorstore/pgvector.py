@@ -24,13 +24,14 @@ class PgVectorStore:
         self.model = SentenceTransformer(config["embedding"]["model_name"], trust_remote_code=True)
         self.document_prefix = config["embedding"]["document_prefix"]
         self.query_prefix = config["embedding"]["query_prefix"]
+        self.encode_batch_size = config["embedding"].get("encode_batch_size", 32)
         search_config = config.get("search", {})
         self.dense_limit = search_config.get("dense", {}).get("limit", 10)
         self.sparse_limit = search_config.get("sparse", {}).get("limit", 10)
 
     def _embed(self: "PgVectorStore", texts: list[str], prefix: str = "") -> list[list[float]]:
         prefixed = [f"{prefix}{t}" for t in texts]
-        embeddings = self.model.encode(prefixed, batch_size=64, show_progress_bar=False)
+        embeddings = self.model.encode(prefixed, batch_size=self.encode_batch_size, show_progress_bar=False)
         return embeddings.tolist()
 
     def add(self: "PgVectorStore", content_ids: list[str], content_types: list[ContentType], texts: list[str]) -> int:

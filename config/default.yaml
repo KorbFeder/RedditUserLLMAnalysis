@@ -2,7 +2,8 @@ embedding:
   model_name: "nomic-ai/nomic-embed-text-v1.5"
   document_prefix: "search_document: "
   query_prefix: "search_query: "
-  batch_size: 100
+  batch_size: 32
+  encode_batch_size: 16
 
 search:
   dense:
