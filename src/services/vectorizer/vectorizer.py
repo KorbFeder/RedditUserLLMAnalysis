@@ -1,7 +1,5 @@
-import os
 import logging
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from src.storage.postgres import PostgresStore
@@ -93,6 +91,3 @@ class Vectorizer:
         logger.info(f"Embedding sync complete for user: {username}")
 
         return {"submissions": len(submissions), "comments": len(comments)}
-
-
-

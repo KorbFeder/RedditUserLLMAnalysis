@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 from src.shared.job_messages import JobMessages, JobStatus
 from src.shared.session import create_db_session
 from src.storage.jobs import JobStore
-from src.services.agent.sentiment import compute_sentiment
+from src.services.agent.retrieval.retrival import Retriever
+from src.helpers.settings import load_config
 
 load_dotenv()
 
@@ -26,14 +27,16 @@ app = FastStream(broker)
 @broker.subscriber("agent")
 async def agent_handler(msg: JobMessages):
     logger.info(f"Starting sentiment analysis for {msg.username}")
+    config = load_config()
     session = create_db_session()
+
     job_store = JobStore(session)
+    retriever = Retriever(config, session)
     job_store.update_status(msg.job_id, 'agent', JobStatus.ACTIVE)
 
     try:
         def run_analysis():
-            state = {"username": msg.username, "question": msg.question}
-            return compute_sentiment(state)
+            return retriever.search(msg.question, msg.username)
 
         result = await asyncio.to_thread(run_analysis)
         job_store.update_status(msg.job_id, 'agent', JobStatus.COMPLETED, result=str(result))

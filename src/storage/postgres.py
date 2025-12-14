@@ -2,7 +2,7 @@ import os
 import logging
 from dataclasses import asdict
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, literal_column
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import func
@@ -62,19 +62,12 @@ class PostgresStore:
         query = select(Submission).where(Submission.id.in_(ids))
         return self.session.scalars(query).all()
 
-    def get_submission(self: "PostgresStore", id: str) -> Submission | None:
-        return self.session.get(Submission, id)
-
-
     def get_comments(self: "PostgresStore", ids: list[str]) -> list[Comment]:
         if not ids:
             return []
 
         query = select(Comment).where(Comment.id.in_(ids))
         return self.session.scalars(query).all()
-
-    def get_comment(self: "PostgresStore", id: str) -> Comment | None:
-        return self.session.get(Comment, id)
 
     def get_users_submissions(self: "PostgresStore", username: str) -> list[Submission]:
         query = (
@@ -91,10 +84,6 @@ class PostgresStore:
             .order_by(Comment.created_utc.desc())
         )
         return self.session.scalars(query).all()
-
-    def get_submission_comments(self, submission_id: str) -> list[Comment]:
-        query = select(Comment).where(Comment.submission_id == submission_id)
-        return list(self.session.scalars(query).all())
 
     def get_user_cache_status(self: "PostgresStore", username: str):
         return self.session.get(UserContributionCacheStatus, username)
@@ -222,8 +211,71 @@ class PostgresStore:
         )
         return self.session.execute(query).all()
 
-    def get_user_submission_ids(self, username: str) -> set[str]:
-        """Returns set of submission IDs for a user"""
-        query = select(Submission.id).where(Submission.author == username)
-        return set(self.session.scalars(query).all())
+    def get_comment_chain(self, comment_id: str) -> list[Comment]:
+        """
+        Fetch comment chain from a comment up to the top-level comment.
+        Uses recursive CTE for efficient single-query traversal.
+
+        Returns comments ordered: [user's comment, parent, grandparent, ..., top-level]
+        """
+        chains = self.get_comment_chains([comment_id])
+        return chains.get(comment_id, [])
+
+    def get_comment_chains(self, comment_ids: list[str]) -> dict[str, list[Comment]]:
+        """
+        Batch fetch multiple comment chains in a single query.
+        Uses recursive CTE with origin tracking.
+
+        Returns: {comment_id: [user's comment, parent, ..., top-level]}
+        """
+        if not comment_ids:
+            return {}
+
+        # Base case: start with all given comments, track origin
+        base = (
+            select(
+                Comment.id,
+                Comment.parent_id,
+                Comment.submission_id,
+                Comment.id.label("origin_id"),
+                literal_column("0").label("depth")
+            )
+            .where(Comment.id.in_(comment_ids))
+            .cte(name="comment_chain", recursive=True)
+        )
+
+        cte_alias = base.alias("cc")
+
+        # Recursive part: walk up to parent, carry origin through
+        recursive = (
+            select(
+                Comment.id,
+                Comment.parent_id,
+                Comment.submission_id,
+                cte_alias.c.origin_id,
+                (cte_alias.c.depth + 1).label("depth")
+            )
+            .join(cte_alias, Comment.id == cte_alias.c.parent_id)
+            .where(cte_alias.c.parent_id != cte_alias.c.submission_id)
+        )
+
+        # Combine base and recursive
+        cte = base.union_all(recursive)
+
+        # Final query: get full Comment objects with origin_id and depth
+        query = (
+            select(Comment, cte.c.origin_id, cte.c.depth)
+            .join(cte, Comment.id == cte.c.id)
+            .order_by(cte.c.origin_id, cte.c.depth)
+        )
+
+        # Group by origin_id
+        results: dict[str, list[Comment]] = {}
+        for row in self.session.execute(query).all():
+            comment, origin_id, depth = row
+            if origin_id not in results:
+                results[origin_id] = []
+            results[origin_id].append(comment)
+
+        return results
 

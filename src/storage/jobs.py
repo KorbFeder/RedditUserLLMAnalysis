@@ -2,7 +2,6 @@ import os
 import logging
 
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
 
 from src.storage.models import Job, UserSentimentJob
 from src.shared.job_messages import JobStatus

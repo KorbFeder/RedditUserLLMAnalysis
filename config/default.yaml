@@ -5,8 +5,17 @@ embedding:
   batch_size: 100
 
 search:
-  dense_limit: 20
-  sparse_limit: 20
+  dense:
+    limit: 20
+    weight: 0.5
+  sparse:
+    limit: 20
+    weight: 0.5
+  rrf_k: 60
+  rerank:
+    model_name: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    candidate_limit: 50
+    top_k: 10
 
 llm_model_name: "z-ai/glm-4.5-air:free"
 

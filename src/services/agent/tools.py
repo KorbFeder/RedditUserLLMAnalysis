@@ -1,17 +1,12 @@
-from langchain.tools import tool
-from src.storage.chroma import VectorStore
-
-@tool
-def search_users_reddit_contributions(username: str, search_term: str, n_results: int = 20):
-    """Search a Reddit user's posts and comments in the RAG database.
-
-    Args:
-        username: The Reddit username to search content for
-        search_term: Keywords or phrases to search for in their content
-        n_results: Number of results to return (default 20)
-
-    Returns:
-        Dict with matching documents from the user's Reddit history
-    """
-    rag = VectorStore()
-    return rag.query_user_content(search_term, username, n_results)
+# Placeholder for LangChain tools
+# The search functionality is now provided by Retriever class
+# in src/services/agent/retrieval/retrival.py
+#
+# To create a LangChain tool, use:
+# from langchain.tools import tool
+# from src.services.agent.retrieval.retrival import Retriever
+#
+# @tool
+# def search_user_content(query: str, username: str):
+#     retriever = Retriever(config, session)
+#     return retriever.search(query, username)

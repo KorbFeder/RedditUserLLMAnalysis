@@ -24,8 +24,9 @@ class PgVectorStore:
         self.model = SentenceTransformer(config["embedding"]["model_name"], trust_remote_code=True)
         self.document_prefix = config["embedding"]["document_prefix"]
         self.query_prefix = config["embedding"]["query_prefix"]
-        self.dense_limit = config.get("search", {}).get("dense_limit", 10)
-        self.sparse_limit = config.get("search", {}).get("sparse_limit", 10)
+        search_config = config.get("search", {})
+        self.dense_limit = search_config.get("dense", {}).get("limit", 10)
+        self.sparse_limit = search_config.get("sparse", {}).get("limit", 10)
 
     def _embed(self: "PgVectorStore", texts: list[str], prefix: str = "") -> list[list[float]]:
         prefixed = [f"{prefix}{t}" for t in texts]
@@ -57,18 +58,39 @@ class PgVectorStore:
         logger.info(f"Added {len(texts)} embeddings")
         return len(texts)
 
-    def dense_search(self: "PgVectorStore", query_text: str, limit: int | None = None) -> list[SearchResult]:
+    def dense_search(self, query_text: str, username: str | None = None, limit: int | None = None) -> list[SearchResult]:
         limit = limit or self.dense_limit
         query_embedding = self._embed([query_text], prefix=self.query_prefix)[0]
 
-        query = (
-            select(
-                Embedding.content_id,
-                Embedding.content_type,
+        if username:
+            # JOIN to filter by author
+            submission_query = (
+                select(
+                    Embedding.content_id,
+                    Embedding.content_type,
+                    Embedding.embedding.cosine_distance(query_embedding).label('distance')
+                )
+                .join(Submission, Embedding.content_id == Submission.id)
+                .where(Embedding.content_type == ContentType.SUBMISSION.value)
+                .where(Submission.author == username)
             )
-            .order_by(Embedding.embedding.cosine_distance(query_embedding))
-            .limit(limit)
-        )
+            comment_query = (
+                select(
+                    Embedding.content_id,
+                    Embedding.content_type,
+                    Embedding.embedding.cosine_distance(query_embedding).label('distance')
+                )
+                .join(Comment, Embedding.content_id == Comment.id)
+                .where(Embedding.content_type == ContentType.COMMENT.value)
+                .where(Comment.author == username)
+            )
+            query = submission_query.union_all(comment_query).order_by(text('distance')).limit(limit)
+        else:
+            query = (
+                select(Embedding.content_id, Embedding.content_type)
+                .order_by(Embedding.embedding.cosine_distance(query_embedding))
+                .limit(limit)
+            )
 
         results = self.session.execute(query).fetchall()
 
@@ -81,7 +103,7 @@ class PgVectorStore:
             for rank, row in enumerate(results, start=1)
         ]
 
-    def sparse_search(self: "PgVectorStore", query_text: str, limit: int | None = None) -> list[SearchResult] | None:
+    def sparse_search(self, query_text: str, username: str | None = None, limit: int | None = None) -> list[SearchResult]:
         limit = limit or self.sparse_limit
         ts_query = func.websearch_to_tsquery('english', query_text)
 
@@ -102,6 +124,10 @@ class PgVectorStore:
             )
             .where(Comment.search_vector.op('@@')(ts_query))
         )
+
+        if username:
+            submission_query = submission_query.where(Submission.author == username)
+            comment_query = comment_query.where(Comment.author == username)
 
         combined = submission_query.union_all(comment_query).order_by(text('score DESC')).limit(limit)
         results = self.session.execute(combined).fetchall()

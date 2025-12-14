@@ -66,6 +66,23 @@ services:
     volumes:
       - ./config:/app/config
 
+  agent:
+    build:
+      context: .
+      dockerfile: src/services/agent/Dockerfile
+    container_name: agent_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-reddit}:${POSTGRES_PASSWORD:-reddit}@db:5432/${POSTGRES_DB:-reddit_analysis}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/?heartbeat=600
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+    volumes:
+      - ./config:/app/config
+
 volumes:
   pgdata:
   rabbitmq_data:
