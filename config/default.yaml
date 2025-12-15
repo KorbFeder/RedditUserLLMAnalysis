@@ -1,7 +1,7 @@
 embedding:
-  model_name: "nomic-ai/nomic-embed-text-v1.5"
-  document_prefix: "search_document: "
-  query_prefix: "search_query: "
+  model_name: "BAAI/bge-small-en-v1.5"
+  document_prefix: ""
+  query_prefix: ""
   batch_size: 32
   encode_batch_size: 16
 

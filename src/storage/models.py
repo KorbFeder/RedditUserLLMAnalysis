@@ -91,7 +91,7 @@ class Embedding(Base):
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
     content_id: Mapped[str]
     content_type: Mapped[str]
-    embedding = mapped_column(Vector(768), default=None)
+    embedding = mapped_column(Vector(384), default=None)  # bge-small-en-v1.5
 
     __table_args__ = (
         UniqueConstraint('content_id', 'content_type'),
