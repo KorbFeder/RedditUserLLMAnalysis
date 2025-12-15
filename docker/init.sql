@@ -73,12 +73,12 @@ CREATE INDEX idx_comments_author ON comments(author);
 CREATE INDEX idx_comments_parent_id ON comments(parent_id);
 CREATE INDEX idx_comments_created_utc ON comments(created_utc);
 
--- Embeddings table for pgvector
+-- Embeddings table for pgvector (384 dims for bge-small-en-v1.5)
 CREATE TABLE embeddings (
     id SERIAL PRIMARY KEY,
     content_id TEXT NOT NULL,
     content_type TEXT NOT NULL CHECK (content_type IN ('submission', 'comment')),
-    embedding vector(768),
+    embedding vector(384),
     UNIQUE(content_id, content_type)
 );
 
