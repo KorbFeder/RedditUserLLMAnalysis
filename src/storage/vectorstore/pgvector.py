@@ -1,6 +1,6 @@
 import logging
 import os
-from sqlalchemy import create_engine, select, text, func
+from sqlalchemy import create_engine, select, text, func, literal_column
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert
 from sentence_transformers import SentenceTransformer
@@ -111,7 +111,7 @@ class PgVectorStore:
         submission_query = (
             select(
                 Submission.id.label('content_id'),
-                text("'submission'").label('content_type'),
+                literal_column("'submission'").label('content_type'),
                 func.ts_rank(Submission.search_vector, ts_query).label('score')
             )
             .where(Submission.search_vector.op('@@')(ts_query))
@@ -120,7 +120,7 @@ class PgVectorStore:
         comment_query = (
             select(
                 Comment.id.label('content_id'),
-                text("'comment'").label('content_type'),
+                literal_column("'comment'").label('content_type'),
                 func.ts_rank(Comment.search_vector, ts_query).label('score')
             )
             .where(Comment.search_vector.op('@@')(ts_query))

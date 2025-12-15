@@ -15,6 +15,7 @@ RUN pip install poetry
 COPY pyproject.toml poetry.lock* ./
 
 # Install dependencies (no venv in container)
+# Core only - no ML or LLM deps needed for ingestion
 RUN poetry config virtualenvs.create false && \
     poetry install --no-interaction --no-ansi --no-root
 
