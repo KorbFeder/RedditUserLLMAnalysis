@@ -23,9 +23,8 @@ dependencies = [
 optional = true
 
 [tool.poetry.group.ml.dependencies]
-# ML dependencies - vectorizer and agent need these (pulls PyTorch ~2GB)
-sentence-transformers = ">=5.1.2,<6.0.0"
-einops = ">=0.8.1,<0.9.0"
+# ML dependencies - vectorizer and agent need these (lightweight ONNX-based)
+fastembed = ">=0.4.0"
 
 [tool.poetry.group.llm]
 optional = true
