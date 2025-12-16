@@ -36,7 +36,8 @@ async def agent_handler(msg: JobMessages):
 
     try:
         def run_analysis():
-            return retriever.search(msg.question, msg.username)
+            result = retriever.search(msg.question, msg.username)
+            return result
 
         result = await asyncio.to_thread(run_analysis)
         job_store.update_status(msg.job_id, 'agent', JobStatus.COMPLETED, result=str(result))

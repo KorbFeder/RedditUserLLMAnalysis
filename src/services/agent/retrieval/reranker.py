@@ -16,8 +16,11 @@ class Reranker:
         candidates = documents[:self.candidate_limit]
         doc_strings = [doc.to_context_string() for doc in candidates]
 
-        # FastEmbed rerank returns list of (score, text, index)
-        results = list(self.reranker.rerank(query, doc_strings, top_k=self.top_k))
+        # FastEmbed rerank returns Iterable[float] - scores for each document
+        scores = list(self.reranker.rerank(query, doc_strings))
 
-        # Return documents in reranked order
-        return [candidates[result["index"]] for result in results]
+        # Pair scores with indices and sort by score descending
+        scored_indices = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+
+        # Return top_k documents in reranked order
+        return [candidates[idx] for idx, _ in scored_indices[:self.top_k]]

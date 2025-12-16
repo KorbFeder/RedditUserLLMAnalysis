@@ -1,9 +1,13 @@
+import logging
+
 from src.storage.vectorstore.pgvector import PgVectorStore
 from src.storage.vectorstore.base import SearchResult, ContentType
 from src.services.agent.retrieval.rrf import ReciprocalRankFusion
 from src.storage.postgres import PostgresStore
 from src.services.agent.comment_chain import CommentChain
 from src.services.agent.retrieval.reranker import Reranker
+
+logger = logging.getLogger(__name__)
 
 class Retriever:
     def __init__(self, config: dict, session):
@@ -36,7 +40,13 @@ class Retriever:
             weights=[self.dense_weight, self.sparse_weight]
         )
         chains = self.fetch_from_db(fused)
-        return self.reranker.rank(query, chains)
+        result = self.reranker.rank(query, chains)
+        
+        logger.info("Finished the search and ranked with reranker:")
+        for r in result:
+            logger.info(r.to_context_string)
+
+        return result
 
     def search_custom(
         self,

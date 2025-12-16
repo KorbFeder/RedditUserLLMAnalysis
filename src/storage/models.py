@@ -1,8 +1,8 @@
 from datetime import datetime
 
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, MappedAsDataclass, relationship
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import func, UniqueConstraint, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy import func, UniqueConstraint, ForeignKey, Computed
 from pgvector.sqlalchemy import Vector
 
 class Base(MappedAsDataclass, DeclarativeBase):
@@ -33,6 +33,9 @@ class Submission(Base):
 
     fetched_at: Mapped[datetime] = mapped_column(default=func.now(), init=False)
 
+    # Full-text search vector (generated column in DB)
+    search_vector = mapped_column(TSVECTOR, init=False, default=None)
+
 class Comment(Base):
     __tablename__ = 'comments'
     id: Mapped[str] = mapped_column(primary_key=True)
@@ -53,7 +56,10 @@ class Comment(Base):
     is_deleted: Mapped[bool] = mapped_column(default=False)
     is_archived: Mapped[bool] = mapped_column(default=True)
 
-    fetched_at: Mapped[datetime] = mapped_column(default=func.now(), init=False) 
+    fetched_at: Mapped[datetime] = mapped_column(default=func.now(), init=False)
+
+    # Full-text search vector (generated column in DB)
+    search_vector = mapped_column(TSVECTOR, init=False, default=None)
 
 class Job(Base):
     __tablename__ = 'jobs'
