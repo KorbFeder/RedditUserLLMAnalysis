@@ -112,6 +112,33 @@ poetry run python -m src.services.ingestion.main
 poetry run python -m src.services.agent.main
 ```
 
+### Debug with Breakpoints (VS Code + Docker)
+
+Debug services running in containers with full breakpoint support:
+
+```bash
+# Start all services in debug mode
+docker-compose -f docker-compose.yml -f docker-compose.debug.yml up --build
+```
+
+**Debug ports:**
+| Service | Port |
+|---------|------|
+| Ingestion | 5678 |
+| Vectorizer | 5679 |
+| Agent | 5680 |
+
+**Workflow for debugging the full pipeline:**
+1. Start containers (they run immediately with debugpy listening)
+2. Set breakpoints in your code
+3. Open VS Code Run and Debug panel (Ctrl+Shift+D)
+4. Select **"Docker: All Workers"** and press F5 (attaches to all 3 services)
+5. Trigger a job with `python main.py`
+6. Breakpoints hit as the message flows through each service
+
+**To debug a single service:**
+- Select "Docker: Ingestion", "Docker: Vectorizer", or "Docker: Agent" instead
+
 ### Publish Test Messages
 
 **Job Message Format:**

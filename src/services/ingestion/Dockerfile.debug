@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN pip install poetry debugpy
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock* ./
+
+# Install dependencies (no venv in container)
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi --no-root
+
+# Copy source code
+COPY src/ ./src/
+COPY config/ ./config/
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Run with debugpy - debugger can attach anytime (doesn't block startup)
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "-m", "faststream", "run", "src.services.ingestion.main:app"]

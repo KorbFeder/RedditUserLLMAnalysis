@@ -39,12 +39,13 @@ class Retriever:
             [dense_results, sparse_results],
             weights=[self.dense_weight, self.sparse_weight]
         )
+        logger.info(f"Reciprocal Rank Fusion result count: {len(fused)}")
         chains = self.fetch_from_db(fused)
         result = self.reranker.rank(query, chains)
+        logger.info(f"Reranker result count: {len(fused)}")
         
-        logger.info("Finished the search and ranked with reranker:")
         for r in result:
-            logger.info(r.to_context_string)
+            logger.info(r.to_context_string())
 
         return result
 
