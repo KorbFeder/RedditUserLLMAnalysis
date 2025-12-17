@@ -25,6 +25,7 @@ optional = true
 [tool.poetry.group.ml.dependencies]
 # ML dependencies - vectorizer and agent need these (lightweight ONNX-based)
 fastembed = ">=0.4.0"
+google-genai = "^1.56.0"
 
 [tool.poetry.group.llm]
 optional = true

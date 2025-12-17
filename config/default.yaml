@@ -1,9 +1,20 @@
 embedding:
-  model_name: "BAAI/bge-small-en-v1.5"
-  document_prefix: ""
-  query_prefix: ""
-  batch_size: 32
-  encode_batch_size: 16
+  active_provider: "fastembed" 
+
+  providers:
+    fastembed:
+      model_name: "BAAI/bge-small-en-v1.5"
+      dimensions: 768
+      document_prefix: ""
+      query_prefix: ""
+      batch_size: 32
+      encode_batch_size: 16
+
+    gemini:
+      model_name: "text-embedding-004"
+      dimensions: 768
+      document_prefix: ""
+      query_prefix: ""
 
 search:
   dense:
