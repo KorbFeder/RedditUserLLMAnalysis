@@ -7,6 +7,7 @@ from src.storage.vectorstore.pgvector import PgVectorStore
 from src.storage.vectorstore.base import ContentType
 from src.storage.models import Submission, Comment
 from src.services.vectorizer.rag.chunking import DocumentBuilder
+from src.embedding.embedding_factory import EmbeddingFactory
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,9 @@ class Vectorizer:
         self.session = session
         self.config = config
 
+        embedding_strategy = EmbeddingFactory.load_strategy(config)
         self.store = PostgresStore(self.session)
-        self.vector_store = PgVectorStore(config, self.session)
+        self.vector_store = PgVectorStore(config, embedding_strategy, self.session)
         self.small_to_large = DocumentBuilder()
 
     def sync_embeddings(self: "Vectorizer", username: str) -> dict:

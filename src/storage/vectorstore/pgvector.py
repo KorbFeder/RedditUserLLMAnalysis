@@ -3,8 +3,8 @@ import os
 from sqlalchemy import create_engine, select, text, func, literal_column
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert
-from fastembed import TextEmbedding
 
+from src.embedding.base import EmbeddingStrategy
 from src.storage.models import Embedding, Submission, Comment
 from src.storage.vectorstore.base import SearchResult, ContentType
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class PgVectorStore:
-    def __init__(self: "PgVectorStore", config: dict, session=None):
+    def __init__(self: "PgVectorStore", config: dict, embedder: EmbeddingStrategy, session=None):
         if session:
             self.session = session
             self._owns_session = False
@@ -21,24 +21,16 @@ class PgVectorStore:
             Session = sessionmaker(bind=engine)
             self.session = Session()
             self._owns_session = True
-        self.model = TextEmbedding(config["embedding"]["model_name"])
-        self.document_prefix = config["embedding"]["document_prefix"]
-        self.query_prefix = config["embedding"]["query_prefix"]
-        self.encode_batch_size = config["embedding"].get("encode_batch_size", 32)
+        self.embedder = embedder
         search_config = config.get("search", {})
         self.dense_limit = search_config.get("dense", {}).get("limit", 10)
         self.sparse_limit = search_config.get("sparse", {}).get("limit", 10)
-
-    def _embed(self: "PgVectorStore", texts: list[str], prefix: str = "") -> list[list[float]]:
-        prefixed = [f"{prefix}{t}" for t in texts] if prefix else texts
-        embeddings = list(self.model.embed(prefixed))
-        return [emb.tolist() for emb in embeddings]
 
     def add(self: "PgVectorStore", content_ids: list[str], content_types: list[ContentType], texts: list[str]) -> int:
         if not texts:
             return 0
 
-        embeddings = self._embed(texts, prefix=self.document_prefix)
+        embeddings = self.embedder.embed_documents(texts)
 
         values = [
             {
@@ -61,7 +53,7 @@ class PgVectorStore:
 
     def dense_search(self, query_text: str, username: str | None = None, limit: int | None = None) -> list[SearchResult]:
         limit = limit or self.dense_limit
-        query_embedding = self._embed([query_text], prefix=self.query_prefix)[0]
+        query_embedding = self.embedder.embed_query(query_text)
 
         if username:
             # JOIN to filter by author

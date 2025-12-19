@@ -6,7 +6,7 @@ class EmbeddingModelInfo:
     model_name: str
     dimensions: int
 
-class BaseEmbedding(Protocol):
+class EmbeddingStrategy(Protocol):
     @property
     def info(self) -> EmbeddingModelInfo: ...
     @property

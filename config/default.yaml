@@ -1,20 +1,28 @@
 embedding:
   active_provider: "fastembed" 
+  active_model: "BAAI/bge-small-en-v1.5"
+  batch_size: 32
 
   providers:
     fastembed:
-      model_name: "BAAI/bge-small-en-v1.5"
-      dimensions: 768
-      document_prefix: ""
-      query_prefix: ""
-      batch_size: 32
-      encode_batch_size: 16
+      "BAAI/bge-small-en-v1.5":
+        dimensions: 384
+        document_prefix: ""
+        query_prefix: ""
+      "BAAI/bge-base-en-v1.5":
+        dimensions: 768
+        document_prefix: ""
+        query_prefix: ""
 
     gemini:
-      model_name: "text-embedding-004"
-      dimensions: 768
-      document_prefix: ""
-      query_prefix: ""
+      "text-embedding-005":
+        dimensions: 768
+        document_prefix: ""
+        query_prefix: ""
+      "gemini-embedding-001":
+        dimensions: 3072
+        document_prefix: ""
+        query_prefix: ""
 
 search:
   dense:
@@ -28,7 +36,7 @@ search:
     model_name: "Xenova/ms-marco-MiniLM-L-6-v2"
     candidate_limit: 50
     top_k: 10
-
+  
 llm_model_name: "z-ai/glm-4.5-air:free"
 
 reddit_api:
