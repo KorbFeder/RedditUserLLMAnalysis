@@ -2,9 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, MappedAsDataclass, relationship
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from sqlalchemy import func, UniqueConstraint, ForeignKey, Computed
-from pgvector.sqlalchemy import Vector
-
+from sqlalchemy import func, ForeignKey
 class Base(MappedAsDataclass, DeclarativeBase):
     pass
 
@@ -90,17 +88,3 @@ class UserContributionCacheStatus(Base):
     username: Mapped[str] = mapped_column(primary_key=True)
     newest_submission_cursor: Mapped[int | None] = mapped_column(default=None)
     newest_comment_cursor: Mapped[int | None] = mapped_column(default=None)
-
-
-class Embedding(Base):
-    __tablename__ = 'embeddings'
-    id: Mapped[int] = mapped_column(primary_key=True, init=False)
-    content_id: Mapped[str]
-    content_type: Mapped[str]
-    embedding = mapped_column(Vector(384), default=None)  # bge-small-en-v1.5
-
-    __table_args__ = (
-        UniqueConstraint('content_id', 'content_type'),
-    )
-
-

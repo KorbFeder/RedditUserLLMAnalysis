@@ -3,22 +3,29 @@ import logging
 from sqlalchemy.orm import Session
 
 from src.storage.postgres import PostgresStore
-from src.storage.vectorstore.pgvector import PgVectorStore
+from src.storage.vectorstore.pgvector import VectorStoreManager
 from src.storage.vectorstore.base import ContentType
 from src.storage.models import Submission, Comment
 from src.services.vectorizer.rag.chunking import DocumentBuilder
-from src.embedding.embedding_factory import EmbeddingFactory
+from src.embedding.embedding_factory import get_embeddings, get_embedding_info
 
 logger = logging.getLogger(__name__)
+
 
 class Vectorizer:
     def __init__(self: "Vectorizer", config: dict, session: Session):
         self.session = session
         self.config = config
 
-        embedding_strategy = EmbeddingFactory.load_strategy(config)
+        embeddings = get_embeddings(config)
+        model_name, dimensions = get_embedding_info(config)
+
         self.store = PostgresStore(self.session)
-        self.vector_store = PgVectorStore(config, embedding_strategy, self.session)
+        self.vector_store = VectorStoreManager(
+            embeddings=embeddings,
+            model_name=model_name,
+            dimensions=dimensions,
+        )
         self.small_to_large = DocumentBuilder()
 
     def sync_embeddings(self: "Vectorizer", username: str) -> dict:
@@ -31,15 +38,24 @@ class Vectorizer:
 
         logger.info(f"Found {len(submissions)} submissions, {len(comments)} comments")
 
-        existing_submission_ids = self.vector_store.get_existing_ids(submission_ids, ContentType.SUBMISSION)
-        existing_comment_ids = self.vector_store.get_existing_ids(comment_ids, ContentType.COMMENT)
+        existing_submission_ids = self.vector_store.get_existing_ids(
+            submission_ids, ContentType.SUBMISSION
+        )
+        existing_comment_ids = self.vector_store.get_existing_ids(
+            comment_ids, ContentType.COMMENT
+        )
 
         new_submission_ids = set(submission_ids) - existing_submission_ids
         new_comment_ids = set(comment_ids) - existing_comment_ids
 
-        logger.info(f"Skipping {len(existing_submission_ids)} existing submissions, {len(existing_comment_ids)} existing comments")
+        logger.info(
+            f"Skipping {len(existing_submission_ids)} existing submissions, "
+            f"{len(existing_comment_ids)} existing comments"
+        )
 
-        submissions = [submission for submission in submissions if submission.id in new_submission_ids]
+        submissions = [
+            submission for submission in submissions if submission.id in new_submission_ids
+        ]
         comments = [comment for comment in comments if comment.id in new_comment_ids]
 
         if not submissions and not comments:
@@ -49,7 +65,9 @@ class Vectorizer:
         submission_ids_for_comments = [c.submission_id for c in comments if c.submission_id]
         parent_ids = [c.parent_id for c in comments if c.parent_id]
 
-        submissions_by_id = {s.id: s for s in self.store.get_submissions(submission_ids_for_comments)}
+        submissions_by_id = {
+            s.id: s for s in self.store.get_submissions(submission_ids_for_comments)
+        }
         parents_by_id = {c.id: c for c in self.store.get_comments(parent_ids)}
 
         docs = []
@@ -59,7 +77,9 @@ class Vectorizer:
         for comment in comments:
             submission = submissions_by_id.get(comment.submission_id)
             if not submission:
-                logger.warning(f"Missing submission {comment.submission_id} for comment {comment.id}")
+                logger.warning(
+                    f"Missing submission {comment.submission_id} for comment {comment.id}"
+                )
                 continue
             parent = parents_by_id.get(comment.parent_id)
             doc = self.small_to_large.comment(submission, comment, parent)
@@ -79,15 +99,18 @@ class Vectorizer:
         batch_size = self.config.get("embedding", {}).get("batch_size", 100)
         total_batches = (total_items + batch_size - 1) // batch_size
 
-        logger.info(f"Embedding {len(submissions)} submissions, {len(comments)} comments in {total_batches} batches")
+        logger.info(
+            f"Embedding {len(submissions)} submissions, {len(comments)} comments "
+            f"in {total_batches} batches"
+        )
 
         for i in range(0, total_items, batch_size):
             batch_num = i // batch_size + 1
-            batch_ids = ids[i:i + batch_size]
-            batch_types = content_types[i:i + batch_size]
-            batch_docs = docs[i:i + batch_size]
+            batch_ids = ids[i : i + batch_size]
+            batch_types = content_types[i : i + batch_size]
+            batch_docs = docs[i : i + batch_size]
 
-            self.vector_store.add(batch_ids, batch_types, batch_docs)
+            self.vector_store.add(batch_ids, batch_types, batch_docs, username=username)
             logger.info(f"Batch {batch_num}/{total_batches} complete ({len(batch_ids)} items)")
 
         logger.info(f"Embedding sync complete for user: {username}")

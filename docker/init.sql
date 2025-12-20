@@ -73,20 +73,8 @@ CREATE INDEX idx_comments_author ON comments(author);
 CREATE INDEX idx_comments_parent_id ON comments(parent_id);
 CREATE INDEX idx_comments_created_utc ON comments(created_utc);
 
--- Embeddings table for pgvector (384 dims for bge-small-en-v1.5)
-CREATE TABLE embeddings (
-    id SERIAL PRIMARY KEY,
-    content_id TEXT NOT NULL,
-    content_type TEXT NOT NULL CHECK (content_type IN ('submission', 'comment')),
-    embedding vector(384),
-    UNIQUE(content_id, content_type)
-);
-
--- Vector similarity search index (HNSW)
-CREATE INDEX idx_embeddings_vector ON embeddings USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX idx_embeddings_content ON embeddings(content_id, content_type);
-
 -- Full-text search for hybrid search
+-- Note: Embedding tables are created dynamically by LangChain PGVectorStore per model
 ALTER TABLE submissions ADD COLUMN search_vector tsvector
     GENERATED ALWAYS AS (to_tsvector('english', coalesce(title, '') || ' ' || coalesce(selftext, ''))) STORED;
 ALTER TABLE comments ADD COLUMN search_vector tsvector
