@@ -1,3 +1,5 @@
+import os
+
 from langchain_core.embeddings import Embeddings
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -11,7 +13,10 @@ def get_embeddings(config: dict) -> Embeddings:
 
     match provider:
         case "fastembed":
-            return FastEmbedEmbeddings(model_name=model)
+            # ONNX_PROVIDERS env var enables GPU (e.g., "CUDAExecutionProvider")
+            onnx_provider = os.getenv("ONNX_PROVIDERS")
+            providers = [onnx_provider] if onnx_provider else None
+            return FastEmbedEmbeddings(model_name=model, providers=providers)
         case "gemini":
             return GoogleGenerativeAIEmbeddings(
                 model=f"models/{model}",

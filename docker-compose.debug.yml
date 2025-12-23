@@ -2,7 +2,7 @@ services:
   ingestion:
     build:
       context: .
-      dockerfile: src/services/ingestion/Dockerfile.debug
+      dockerfile: docker/ingestion/Dockerfile.debug
     ports:
       - "5678:5678"
     volumes:
@@ -11,7 +11,7 @@ services:
   vectorizer:
     build:
       context: .
-      dockerfile: src/services/vectorizer/Dockerfile.debug
+      dockerfile: docker/vectorizer/Dockerfile.debug
     ports:
       - "5679:5678"
     volumes:
@@ -20,7 +20,7 @@ services:
   agent:
     build:
       context: .
-      dockerfile: src/services/agent/Dockerfile.debug
+      dockerfile: docker/agent/Dockerfile.debug
     ports:
       - "5680:5678"
     volumes:

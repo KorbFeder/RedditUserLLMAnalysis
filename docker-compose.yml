@@ -37,7 +37,7 @@ services:
   ingestion:
     build:
       context: .
-      dockerfile: src/services/ingestion/Dockerfile
+      dockerfile: docker/ingestion/Dockerfile
     container_name: ingestion_worker
     depends_on:
       db:
@@ -53,7 +53,7 @@ services:
   vectorizer:
     build:
       context: .
-      dockerfile: src/services/vectorizer/Dockerfile
+      dockerfile: docker/vectorizer/Dockerfile
     container_name: vectorizer_worker
     depends_on:
       db:
@@ -69,7 +69,7 @@ services:
   agent:
     build:
       context: .
-      dockerfile: src/services/agent/Dockerfile
+      dockerfile: docker/agent/Dockerfile
     container_name: agent_worker
     depends_on:
       db:

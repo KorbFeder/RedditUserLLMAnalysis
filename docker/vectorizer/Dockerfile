@@ -15,7 +15,7 @@ RUN pip install poetry
 COPY pyproject.toml poetry.lock* ./
 
 # Install dependencies (no venv in container)
-# Core + ML deps (sentence-transformers for embeddings)
+# Core + ML deps for embeddings
 RUN poetry config virtualenvs.create false && \
     poetry install --no-interaction --no-ansi --no-root --with ml
 

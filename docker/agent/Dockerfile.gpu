@@ -1,0 +1,36 @@
+FROM nvidia/cuda:12.1-cudnn8-runtime-ubuntu22.04
+
+WORKDIR /app
+
+# Install Python and system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/python3.11 /usr/bin/python
+
+# Install Poetry
+RUN pip install poetry
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock* ./
+
+# Install dependencies (no venv in container)
+# Core + ML + LLM deps, then swap fastembed for GPU version
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi --no-root --with ml,llm && \
+    pip uninstall -y fastembed && \
+    pip install fastembed-gpu
+
+# Copy source code
+COPY src/ ./src/
+COPY config/ ./config/
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Run the agent worker
+CMD ["faststream", "run", "src.services.agent.main:app"]

@@ -1,5 +1,10 @@
 services:
   vectorizer:
+    build:
+      context: .
+      dockerfile: docker/vectorizer/Dockerfile.gpu
+    environment:
+      ONNX_PROVIDERS: "CUDAExecutionProvider"
     deploy:
       resources:
         reservations:
@@ -9,6 +14,11 @@ services:
               capabilities: [gpu]
 
   agent:
+    build:
+      context: .
+      dockerfile: docker/agent/Dockerfile.gpu
+    environment:
+      ONNX_PROVIDERS: "CUDAExecutionProvider"
     deploy:
       resources:
         reservations:
