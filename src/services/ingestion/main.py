@@ -1,13 +1,15 @@
 import os
 import logging
+from dotenv import load_dotenv
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
+
 from src.services.ingestion.ingestion import IngestionService
 from src.shared.job_messages import JobMessages, JobStatus
 from src.shared.session import create_db_session
 from src.storage.jobs import JobStore
 from src.helpers.settings import load_config
-from dotenv import load_dotenv
+from src.reddit_providers.source_factory import create_current_source, create_historical_source
 
 load_dotenv()
 
@@ -28,7 +30,11 @@ async def ingestion_handler(msg: JobMessages):
     logger.info(f"Starting Ingestion for {msg.username}")
     config = load_config()
     session = create_db_session()
-    ingestion_service = IngestionService(config, session)
+
+    current_source = create_current_source(config)
+    historical_source = create_historical_source(config)
+    ingestion_service = IngestionService(session, current_source, historical_source)
+
     job_store = JobStore(session)
     job_store.update_status(msg.job_id, 'ingestion', JobStatus.ACTIVE)
     try:

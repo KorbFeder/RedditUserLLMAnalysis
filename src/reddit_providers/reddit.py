@@ -54,7 +54,7 @@ class RedditClient:
             timeout=httpx.Timeout(30.0)  # 30s timeout (default is 5s)
         )
 
-        self.config = config
+        self.reddit_config = config["reddit_api"]["providers"]["reddit"]
         self._reddit_id = os.getenv("REDDIT_ID")
         self._reddit_secret = os.getenv("REDDIT_SECRET")
 
@@ -65,7 +65,7 @@ class RedditClient:
 
         # Initialize shared rate limiter once (start with unauthenticated rate)
         if RedditClient._rate_limiter is None:
-            rate_limit = float(os.getenv("rate_limit_no_key", "6.0"))
+            rate_limit = float(self.reddit_config.get("rate_limit_no_key", "6.0"))
             RedditClient._rate_limiter = AsyncRateLimiter(rate_limit)
 
     @property
@@ -79,17 +79,23 @@ class RedditClient:
         if self._reddit_id and self._reddit_secret:
             await self._authenticate()
             # Update shared rate limiter to faster authenticated rate
-            new_rate = float(os.getenv("rate_limit_key", "0.5"))
+            new_rate = float(self.reddit_config.get("rate_limit_key", "0.5"))
             self._rate_limiter.update_delay(new_rate)
             self.base_url = "https://oauth.reddit.com"
             self.authenticated = True
         self._auth_initialized = True
 
     async def stream_user_submissions(self: "RedditClient", username: str) -> AsyncIterator[list[Submission]]:
+        """Fetch user submissions using sort=top&t=all for maximum coverage.
+
+        Testing shows sort=top returns the most results - other sorts (hot, new,
+        controversial) are subsets of top's results.
+        """
         after = None
         count = 0
+
         while True:
-            params = {"limit": 100}
+            params = {"limit": 100, "sort": "top", "t": "all"}
             if after:
                 params["after"] = after
 
@@ -100,12 +106,13 @@ class RedditClient:
                 break
 
             count += len(children)
-            logger.info(f"Fetched {count} submissions for a user")
             yield [self._to_submission(s["data"]) for s in children]
-            after = response["data"].get("after")
 
+            after = response["data"].get("after")
             if not after:
                 break
+
+        logger.info(f"Fetched {count} submissions for user")
 
     async def stream_submission_comments(self: "RedditClient", submission_id: str) -> AsyncIterator[list[Comment]]:
         response = await self._get(f"comments/{submission_id}", {"limit": 500})
@@ -120,10 +127,16 @@ class RedditClient:
             yield comments
 
     async def stream_user_comments(self: "RedditClient", username: str) -> AsyncIterator[list[Comment]]:
+        """Fetch user comments using sort=top&t=all for maximum coverage.
+
+        Testing shows sort=top returns the most results - other sorts (hot, new,
+        controversial) are subsets of top's results.
+        """
         after = None
         count = 0
+
         while True:
-            params = {"limit": 100}
+            params = {"limit": 100, "sort": "top", "t": "all"}
             if after:
                 params["after"] = after
 
@@ -134,12 +147,13 @@ class RedditClient:
                 break
 
             count += len(children)
-            logger.info(f"Fetched {count} submissions for a user")
             yield [self._to_comment(c["data"]) for c in children]
-            after = response["data"].get("after")
 
+            after = response["data"].get("after")
             if not after:
-                break 
+                break
+
+        logger.info(f"Fetched {count} comments for user") 
     
     async def fetch_submissions(self: "RedditClient", ids: list[str]) -> list[Submission]:
         """Fetch submissions by ID (no prefix needed)."""

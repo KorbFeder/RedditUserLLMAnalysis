@@ -40,7 +40,7 @@ class PullPushClient:
     _rate_limiter: AsyncRateLimiter | None = None
 
     def __init__(self, config: dict):
-        pushpull_config = config['reddit_api']['pushpull']
+        pushpull_config = config['reddit_api']['providers']['pullpush']
         self.batch_size: int = pushpull_config['batch_size']
         self.client = httpx.AsyncClient()
 

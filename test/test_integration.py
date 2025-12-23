@@ -16,7 +16,7 @@ load_dotenv()
 
 from services.data_service import DataService
 from src.storage.postgres import PostgresStore
-from src.reddit_providers.pushpull import PullPushClient
+from reddit_providers.pullpush import PullPushClient
 from src.storage.models import Submission, Comment
 
 logging.basicConfig(

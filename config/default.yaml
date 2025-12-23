@@ -40,12 +40,16 @@ search:
 llm_model_name: "z-ai/glm-4.5-air:free"
 
 reddit_api:
-  pushpull:
-    rate_limit: 0.3
-    batch_size: 100
-  reddit:
-    rate_limit_key: 0.5
-    rate_limit_no_key: 6.0
+  current_source: "reddit"
+  historical_source: "pullpush"
+
+  providers:
+    pullpush:
+      rate_limit: 0.3
+      batch_size: 100
+    reddit:
+      rate_limit_key: 0.5
+      rate_limit_no_key: 6.0
 
 # 0 is both the api and the cache are used, 1 only the api and 2 only the cache
 use_cache: 0 
