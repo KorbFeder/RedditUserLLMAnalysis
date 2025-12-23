@@ -9,7 +9,7 @@ class Reranker:
         self.candidate_limit = config["search"]["rerank"]["candidate_limit"]
         self.reranker = TextCrossEncoder(self.rerank_config['model_name'])
 
-    def rank(self, query: str, documents: list[CommentChain]) -> list[CommentChain]:
+    def rank(self: "Reranker", query: str, documents: list[CommentChain]) -> list[CommentChain]:
         if not documents:
             return []
 
@@ -24,3 +24,17 @@ class Reranker:
 
         # Return top_k documents in reranked order
         return [candidates[idx] for idx, _ in scored_indices[:self.top_k]]
+
+    def rank_with_scores(self: "Reranker", query: str, documents: list[CommentChain]) -> list[tuple[CommentChain, float]]:
+        if not documents:
+            return []
+
+        candidates = documents[:self.candidate_limit]
+        doc_strings = [doc.to_context_string() for doc in candidates]
+
+        scores = list(self.reranker.rerank(query, doc_strings))
+
+        scored_indices = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+
+        return [(candidates[idx], score) for idx, score in scored_indices[:self.top_k]]
+

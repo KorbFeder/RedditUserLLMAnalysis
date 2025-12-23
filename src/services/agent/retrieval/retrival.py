@@ -75,6 +75,27 @@ class Retriever:
 
         return result
 
+    def search_with_scores(self, query: str, username: str) -> list[tuple[CommentChain, float]]:
+        """
+        Search user's content and return results with reranker scores.
+
+        Args:
+            query: Search query text
+            username: Filter results to this user's content
+
+        Returns:
+            List of (CommentChain, score) tuples, sorted by score descending
+        """
+        hybrid = self._create_hybrid_retriever(username)
+        docs = hybrid.invoke(query)
+
+        logger.info(f"Hybrid retrieval result count: {len(docs)}")
+        chains = self.fetch_from_db(docs)
+        result = self.reranker.rank_with_scores(query, chains)
+        logger.info(f"Reranker result count: {len(result)}")
+
+        return result
+
     def fetch_from_db(self, docs: list[Document]) -> list[CommentChain]:
         """Convert retrieved Documents to CommentChains with full context."""
         chains: list[CommentChain] = []

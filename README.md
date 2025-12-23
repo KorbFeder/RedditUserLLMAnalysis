@@ -34,6 +34,31 @@ poetry run python -m pytest test/test_ingestion.py -v
 poetry run python -m pytest test/ -k "test_cache" -v
 ```
 
+## Comparing RAG Embedding Models
+
+Compare retrieval quality across different embedding models using reranker scores as a proxy:
+
+```bash
+# Compare all configured models (from config/default.yaml)
+poetry run python scripts/compare_rag_models.py \
+  --username <reddit_user> \
+  --query "What is their opinion on X?"
+
+# Compare specific models only
+poetry run python scripts/compare_rag_models.py \
+  -u <reddit_user> \
+  -q "opinion on moderation" \
+  -m "BAAI/bge-small-en-v1.5,BAAI/bge-base-en-v1.5"
+```
+
+This script runs a complete pipeline in one command:
+1. Ingests user data from Reddit/PullPush (cached if already fetched)
+2. Embeds content with each specified model
+3. Runs retrieval comparison using the same query
+4. Outputs ranked results with reranker scores and declares a winner
+
+**Note:** Requires PostgreSQL to be running (`docker-compose up -d db`).
+
 ## Service UIs & Endpoints
 
 | Service | URL | Credentials |

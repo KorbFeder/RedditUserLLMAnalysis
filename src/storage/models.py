@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, MappedAsDataclass, relationship
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from sqlalchemy import func, ForeignKey
+from sqlalchemy import func, ForeignKey, Computed
 class Base(MappedAsDataclass, DeclarativeBase):
     pass
 
@@ -31,8 +31,12 @@ class Submission(Base):
 
     fetched_at: Mapped[datetime] = mapped_column(default=func.now(), init=False)
 
-    # Full-text search vector (generated column in DB)
-    search_vector = mapped_column(TSVECTOR, init=False, default=None)
+    # Full-text search vector (generated column in DB - excluded from INSERT/UPDATE)
+    search_vector = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('english', coalesce(title, '') || ' ' || coalesce(selftext, ''))"),
+        init=False
+    )
 
 class Comment(Base):
     __tablename__ = 'comments'
@@ -56,8 +60,12 @@ class Comment(Base):
 
     fetched_at: Mapped[datetime] = mapped_column(default=func.now(), init=False)
 
-    # Full-text search vector (generated column in DB)
-    search_vector = mapped_column(TSVECTOR, init=False, default=None)
+    # Full-text search vector (generated column in DB - excluded from INSERT/UPDATE)
+    search_vector = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('english', coalesce(body, ''))"),
+        init=False
+    )
 
 class Job(Base):
     __tablename__ = 'jobs'
