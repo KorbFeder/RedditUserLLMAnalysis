@@ -12,6 +12,7 @@ from src.services.agent.retrieval.retrival import Retriever
 from src.services.agent.comment_chain import CommentChain
 from src.helpers.settings import load_config
 from src.shared.session import create_db_session
+from src.reddit_providers.source_factory import create_current_source, create_historical_source
 
 load_dotenv()
 
@@ -89,8 +90,11 @@ async def run_comparison(username: str, query: str, model_filter: list[str] | No
 
     # Step 1: Ingest user data (once)
     print("[1/3] Ingesting user data...")
-    ingestion = IngestionService(config, db_session)
+    current_source = create_current_source(config)
+    historical_source = create_historical_source(config)
+    ingestion = IngestionService(db_session, current_source, historical_source)
     await ingestion.sync_users_comment_chain(username)
+    await ingestion.close()
     print("      Done.\n")
 
     # Step 2: Embed with each model
