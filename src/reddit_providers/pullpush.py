@@ -1,34 +1,12 @@
 import httpx
-import asyncio
-import time
 import logging
 from typing import AsyncIterator
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.storage.models import Submission, Comment
+from src.reddit_providers.rate_limiter import AsyncRateLimiter
 
 logger = logging.getLogger(__name__)
-
-
-class AsyncRateLimiter:
-    """Shared rate limiter that ensures minimum delay between requests."""
-
-    def __init__(self, min_delay: float):
-        self.min_delay = min_delay
-        self.lock = asyncio.Lock()
-        self.last_request = 0.0
-
-    async def acquire(self):
-        """Wait until we can make a request without violating rate limit."""
-        async with self.lock:
-            now = time.time()
-            elapsed = now - self.last_request
-            wait_time = self.min_delay - elapsed
-
-            if wait_time > 0:
-                await asyncio.sleep(wait_time)
-
-            self.last_request = time.time()
 
 
 class PullPushClient:

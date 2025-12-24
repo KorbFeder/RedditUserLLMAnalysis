@@ -41,12 +41,16 @@ llm_model_name: "z-ai/glm-4.5-air:free"
 
 reddit_api:
   current_source: "reddit"
-  historical_source: "pullpush"
+  historical_source: "arctic_shift"
 
   providers:
     pullpush:
       rate_limit: 0.3
       batch_size: 100
+    arctic_shift:
+      rate_limit: 0.1  # Min delay floor (adaptive pacing handles the rest)
+      batch_size: 100
+      id_batch_size: 500
     reddit:
       rate_limit_key: 0.5
       rate_limit_no_key: 6.0
