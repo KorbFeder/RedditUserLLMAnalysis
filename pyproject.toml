@@ -23,6 +23,8 @@ dependencies = [
     "langchain-postgres (>=0.0.9)",
     "langchain-community (>=0.3.0)",
     "langchain-google-genai (>=2.0.0)",
+    # FastEmbed CPU (default fallback)
+    "fastembed (>=0.4.0)",
 ]
 
 [tool.poetry.group.ml]
@@ -32,6 +34,13 @@ optional = true
 # ML dependencies - vectorizer and agent need these (lightweight ONNX-based)
 fastembed = ">=0.4.0"
 google-genai = "^1.56.0"
+
+[tool.poetry.group.gpu]
+optional = true
+
+[tool.poetry.group.gpu.dependencies]
+# GPU acceleration - requires CUDA. Install with: poetry install --with gpu
+fastembed-gpu = ">=0.4.0"
 
 [tool.poetry.group.llm]
 optional = true

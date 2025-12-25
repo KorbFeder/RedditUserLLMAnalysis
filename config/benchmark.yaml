@@ -1,0 +1,22 @@
+# RAG Benchmark Configuration
+# Pairs of usernames and queries to test retrieval quality
+
+test_cases:
+  - username: "spez"
+    query: "What does this user think about API changes?"
+
+  - username: "spez"
+    query: "How does this user feel about third-party apps?"
+
+  - username: "spez"
+    query: "What are this user's opinions on technology?"
+
+# Models to compare (leave empty for all configured models)
+models:
+  - "BAAI/bge-base-en-v1.5"
+  - "gemini-embedding-001"
+
+# Output settings
+output:
+  directory: "benchmark_results"
+  format: "json"  # json or csv

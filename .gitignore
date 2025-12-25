@@ -152,3 +152,4 @@ Thumbs.db
 
 # Project-specific
 .mcp.json
+benchmark_results/

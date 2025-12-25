@@ -29,39 +29,20 @@ class Vectorizer:
         self.small_to_large = DocumentBuilder()
 
     def sync_embeddings(self: "Vectorizer", username: str) -> dict:
+        """Sync embeddings for a user. Automatically skips already-indexed content."""
         logger.info(f"Starting embedding sync for user: {username}")
 
+        # Fetch all user content from database
         submissions: list[Submission] = self.store.get_users_submissions(username)
         comments: list[Comment] = self.store.get_users_comments(username)
-        submission_ids = [submission.id for submission in submissions]
-        comment_ids = [comment.id for comment in comments]
 
         logger.info(f"Found {len(submissions)} submissions, {len(comments)} comments")
 
-        existing_submission_ids = self.vector_store.get_existing_ids(
-            submission_ids, ContentType.SUBMISSION
-        )
-        existing_comment_ids = self.vector_store.get_existing_ids(
-            comment_ids, ContentType.COMMENT
-        )
-
-        new_submission_ids = set(submission_ids) - existing_submission_ids
-        new_comment_ids = set(comment_ids) - existing_comment_ids
-
-        logger.info(
-            f"Skipping {len(existing_submission_ids)} existing submissions, "
-            f"{len(existing_comment_ids)} existing comments"
-        )
-
-        submissions = [
-            submission for submission in submissions if submission.id in new_submission_ids
-        ]
-        comments = [comment for comment in comments if comment.id in new_comment_ids]
-
         if not submissions and not comments:
-            logger.info("No new content to embed")
-            return {"submissions": 0, "comments": 0}
+            logger.info("No content to process")
+            return {"num_added": 0, "num_skipped": 0, "num_updated": 0, "num_deleted": 0}
 
+        # Fetch parent context for comments
         submission_ids_for_comments = [c.submission_id for c in comments if c.submission_id]
         parent_ids = [c.parent_id for c in comments if c.parent_id]
 
@@ -70,6 +51,7 @@ class Vectorizer:
         }
         parents_by_id = {c.id: c for c in self.store.get_comments(parent_ids)}
 
+        # Build documents for all content
         docs = []
         content_types = []
         ids = []
@@ -95,14 +77,14 @@ class Vectorizer:
             content_types.append(ContentType.SUBMISSION)
             docs.append(doc)
 
+        # Index all documents - the indexing API handles deduplication automatically
         total_items = len(ids)
         batch_size = self.config.get("embedding", {}).get("batch_size", 100)
         total_batches = (total_items + batch_size - 1) // batch_size
 
-        logger.info(
-            f"Embedding {len(submissions)} submissions, {len(comments)} comments "
-            f"in {total_batches} batches"
-        )
+        logger.info(f"Processing {total_items} documents in {total_batches} batches")
+
+        totals = {"num_added": 0, "num_skipped": 0, "num_updated": 0, "num_deleted": 0}
 
         for i in range(0, total_items, batch_size):
             batch_num = i // batch_size + 1
@@ -110,9 +92,20 @@ class Vectorizer:
             batch_types = content_types[i : i + batch_size]
             batch_docs = docs[i : i + batch_size]
 
-            self.vector_store.add(batch_ids, batch_types, batch_docs, username=username)
-            logger.info(f"Batch {batch_num}/{total_batches} complete ({len(batch_ids)} items)")
+            result = self.vector_store.add(batch_ids, batch_types, batch_docs, username=username)
 
-        logger.info(f"Embedding sync complete for user: {username}")
+            # Accumulate totals
+            for key in totals:
+                totals[key] += result.get(key, 0)
 
-        return {"submissions": len(submissions), "comments": len(comments)}
+            logger.info(
+                f"Batch {batch_num}/{total_batches}: "
+                f"added={result['num_added']}, skipped={result['num_skipped']}"
+            )
+
+        logger.info(
+            f"Embedding sync complete for user: {username} - "
+            f"added={totals['num_added']}, skipped={totals['num_skipped']}"
+        )
+
+        return totals

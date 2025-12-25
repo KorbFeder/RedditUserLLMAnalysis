@@ -1,0 +1,38 @@
+# Docker Compose for running RAG benchmark with GPU
+#
+# Usage (from project root):
+#   # First, make sure db is running:
+#   docker-compose up -d db
+#
+#   # Build and run benchmark:
+#   docker-compose -f docker-compose.yml -f scripts/docker-compose.benchmark.yml run --rm benchmark
+#
+#   # Or with custom arguments:
+#   docker-compose -f docker-compose.yml -f scripts/docker-compose.benchmark.yml run --rm benchmark -u spez -q "API changes"
+#
+#   # Or use the helper script:
+#   ./scripts/run_benchmark.sh
+
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.benchmark
+    container_name: benchmark_runner
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-reddit}:${POSTGRES_PASSWORD:-reddit}@db:5432/${POSTGRES_DB:-reddit_analysis}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      ONNX_PROVIDERS: CUDAExecutionProvider
+    volumes:
+      - ./config:/app/config
+      - ./benchmark_results:/app/benchmark_results
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

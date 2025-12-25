@@ -5,6 +5,7 @@ import re
 from langchain_postgres import PGVector
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
+from langchain_classic.indexes import SQLRecordManager, index
 
 from src.storage.vectorstore.base import ContentType
 
@@ -30,14 +31,22 @@ class VectorStoreManager:
             db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
         # LangChain PGVector
-        table_name = self._model_to_table_name(model_name, dimensions)
+        self.table_name = self._model_to_table_name(model_name, dimensions)
         self.vector_store = PGVector(
             embeddings=embeddings,
-            collection_name=table_name,
+            collection_name=self.table_name,
             connection=db_url,
             use_jsonb=True,
         )
-        logger.info(f"Initialized VectorStoreManager with table: {table_name}")
+
+        # Record manager for deduplication (uses same database)
+        self.record_manager = SQLRecordManager(
+            namespace=f"pgvector/{self.table_name}",
+            db_url=db_url,
+        )
+        self.record_manager.create_schema()
+
+        logger.info(f"Initialized VectorStoreManager with table: {self.table_name}")
 
     def _model_to_table_name(self, model_name: str, dimensions: int) -> str:
         """Convert model name + dimensions to a valid table name."""
@@ -50,10 +59,10 @@ class VectorStoreManager:
         content_types: list[ContentType],
         texts: list[str],
         username: str | None = None,
-    ) -> int:
-        """Add documents to the vector store."""
+    ) -> dict:
+        """Add documents to the vector store with automatic deduplication."""
         if not texts:
-            return 0
+            return {"num_added": 0, "num_skipped": 0, "num_updated": 0, "num_deleted": 0}
 
         documents = [
             Document(
@@ -67,35 +76,21 @@ class VectorStoreManager:
             for cid, ctype, text in zip(content_ids, content_types, texts)
         ]
 
-        self.vector_store.add_documents(documents)
-        logger.info(f"Added {len(texts)} embeddings to vector store")
-        return len(texts)
+        # Use indexing API for automatic deduplication
+        result = index(
+            documents,
+            self.record_manager,
+            self.vector_store,
+            cleanup=None,  # Don't delete, just dedupe
+            source_id_key="content_id",
+        )
+
+        logger.info(
+            f"Indexing complete: added={result['num_added']}, "
+            f"skipped={result['num_skipped']}, updated={result['num_updated']}"
+        )
+        return result
 
     def as_retriever(self, **kwargs):
         """Get a LangChain retriever for dense search."""
         return self.vector_store.as_retriever(**kwargs)
-
-    def get_existing_ids(
-        self, content_ids: list[str], content_type: ContentType
-    ) -> set[str]:
-        """Return content_ids that already have embeddings for the given type."""
-        if not content_ids:
-            return set()
-
-        # Search for documents with these content_ids
-        # This is a limitation - we do a similarity search with empty query
-        # and filter by metadata. For better performance, direct SQL would be needed.
-        existing = set()
-        for cid in content_ids:
-            results = self.vector_store.similarity_search(
-                "",
-                k=1,
-                filter={"content_id": cid, "content_type": content_type.value},
-            )
-            if results:
-                existing.add(cid)
-
-        logger.debug(
-            f"Found {len(existing)}/{len(content_ids)} existing {content_type.value} embeddings"
-        )
-        return existing
