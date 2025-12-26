@@ -1,0 +1,20 @@
+# Debug override for RAG benchmark with debugpy
+# Usage:
+#   docker-compose -f docker-compose.yml -f scripts/docker-compose.benchmark.yml -f scripts/docker-compose.benchmark.debug.yml up --build benchmark
+#
+# Then attach VS Code debugger to localhost:5678
+
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.benchmark.debug
+    ports:
+      - "5678:5678"
+    volumes:
+      # Mount source for live editing without rebuild
+      - ./src:/app/src:ro
+      - ./scripts:/app/scripts:ro
+      - ./config:/app/config:ro
+    stdin_open: true
+    tty: true

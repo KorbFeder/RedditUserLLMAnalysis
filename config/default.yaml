@@ -15,7 +15,7 @@ embedding:
         query_prefix: ""
 
     gemini:
-      "text-embedding-005":
+      "text-embedding-004":
         dimensions: 768
         document_prefix: ""
         query_prefix: ""

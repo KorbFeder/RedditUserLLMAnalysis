@@ -13,8 +13,7 @@ test_cases:
 
 # Models to compare (leave empty for all configured models)
 models:
-  - "BAAI/bge-base-en-v1.5"
-  - "gemini-embedding-001"
+  - "text-embedding-004"
 
 # Output settings
 output:

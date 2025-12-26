@@ -1,7 +1,0 @@
-models: []
-output:
-  directory: benchmark_results
-  format: json
-test_cases:
-- query: What does this user think about API changes?
-  username: spez
