@@ -8,8 +8,9 @@ from dotenv import load_dotenv
 from src.shared.job_messages import JobMessages, JobStatus
 from src.shared.session import create_db_session
 from src.storage.jobs import JobStore
-from src.services.agent.retrieval.retrival import Retriever
+from src.services.agent.retrieval.retrieval import Retriever
 from src.helpers.settings import load_config
+from src.services.agent.sentiment import run_sentiment_analysis
 
 load_dotenv()
 
@@ -31,12 +32,12 @@ async def agent_handler(msg: JobMessages):
     session = create_db_session()
 
     job_store = JobStore(session)
-    retriever = Retriever(config, session)
     job_store.update_status(msg.job_id, 'agent', JobStatus.ACTIVE)
 
     try:
         def run_analysis():
-            result = retriever.search(msg.question, msg.username)
+            result = run_sentiment_analysis(config, session, msg.username, msg.question)
+            logger.info(result)
             return result
 
         result = await asyncio.to_thread(run_analysis)

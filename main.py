@@ -42,8 +42,8 @@ async def send_sentiment_job(username: str, question: str):
 
 if __name__ == "__main__":
     job_id = asyncio.run(send_sentiment_job(
-        username="spez",
-        question="What is this user's sentiment about Reddit's API changes?"
+        username="swintec",
+        question="What does the user think about Omicron/Highwinds?"
     ))
     print(f"Job created: {job_id}")
 

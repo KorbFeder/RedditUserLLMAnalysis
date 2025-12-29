@@ -3,16 +3,14 @@
 
 test_cases:
   - username: "spez"
-    query: "What does this user think about API changes?"
+    query: "What company or services does he operate or own?"
 
   - username: "spez"
-    query: "How does this user feel about third-party apps?"
-
-  - username: "spez"
-    query: "What are this user's opinions on technology?"
+    query: "What does he think about the api changes"
 
 # Models to compare (leave empty for all configured models)
 models:
+  - "BAAI/bge-base-en-v1.5"
   - "text-embedding-004"
 
 # Output settings

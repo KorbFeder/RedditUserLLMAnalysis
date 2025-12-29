@@ -26,18 +26,20 @@ embedding:
 
 search:
   dense:
-    limit: 20
+    limit: 50
     weight: 0.5
   sparse:
-    limit: 20
+    limit: 50
     weight: 0.5
   rrf_k: 60
   rerank:
     model_name: "Xenova/ms-marco-MiniLM-L-6-v2"
-    candidate_limit: 50
+    candidate_limit: 100
     top_k: 10
   
-llm_model_name: "z-ai/glm-4.5-air:free"
+agent:
+  provider: "openrouter"
+  main_model_name: "z-ai/glm-4.5-air:free"
 
 reddit_api:
   current_source: "reddit"

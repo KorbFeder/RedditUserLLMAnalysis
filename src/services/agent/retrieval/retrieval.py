@@ -30,10 +30,11 @@ class Retriever:
         self.reranker = Reranker(config)
 
         search_config = config.get("search", {})
-        self.dense_k = search_config.get("dense", {}).get("limit", 20)
-        self.sparse_k = search_config.get("sparse", {}).get("limit", 20)
+        self.dense_k = search_config.get("dense", {}).get("limit", 50)
+        self.sparse_k = search_config.get("sparse", {}).get("limit", 50)
         self.dense_weight = search_config.get("dense", {}).get("weight", 0.5)
         self.sparse_weight = search_config.get("sparse", {}).get("weight", 0.5)
+        self.rrf_k = search_config.get("rrf_k", 60)
 
     def _create_hybrid_retriever(self, username: str) -> EnsembleRetriever:
         """Create a hybrid retriever for the given user."""
@@ -48,6 +49,7 @@ class Retriever:
         return EnsembleRetriever(
             retrievers=[dense, sparse],
             weights=[self.dense_weight, self.sparse_weight],
+            c=self.rrf_k,
         )
 
     def search(self, query: str, username: str, limit: int | None = None) -> list[CommentChain]:
