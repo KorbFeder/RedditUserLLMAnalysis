@@ -5,6 +5,7 @@ import re
 from langchain_postgres import PGVector
 from langchain_core.embeddings import Embeddings
 from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert
 
 from src.storage.vectorstore.base import ContentType
 from src.storage.models import EmbeddingRecord
@@ -67,15 +68,25 @@ class VectorStoreManager:
         content_types: list[ContentType],
         username: str,
     ) -> None:
-        """Record that content has been embedded."""
-        for content_id, content_type in zip(content_ids, content_types):
-            record = EmbeddingRecord(
-                content_id=content_id,
-                collection_name=self.table_name,
-                content_type=content_type.value,
-                username=username,
-            )
-            self.session.merge(record)
+        """Record that content has been embedded using bulk upsert."""
+        if not content_ids:
+            return
+
+        records = [
+            {
+                "content_id": cid,
+                "collection_name": self.table_name,
+                "content_type": ctype.value,
+                "username": username,
+            }
+            for cid, ctype in zip(content_ids, content_types)
+        ]
+
+        stmt = insert(EmbeddingRecord).values(records)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=["content_id", "collection_name"]
+        )
+        self.session.execute(stmt)
         self.session.commit()
 
     def add(
