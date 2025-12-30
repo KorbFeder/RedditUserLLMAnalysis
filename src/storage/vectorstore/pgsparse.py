@@ -15,6 +15,8 @@ class PgSparseRetriever(BaseRetriever):
     session: Any = None
     username: str | None = None
     k: int = 20
+    start_time: int | None = None
+    end_time: int | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -46,6 +48,14 @@ class PgSparseRetriever(BaseRetriever):
         if self.username:
             submission_query = submission_query.where(Submission.author == self.username)
             comment_query = comment_query.where(Comment.author == self.username)
+
+        # Time filtering
+        if self.start_time:
+            submission_query = submission_query.where(Submission.created_utc >= self.start_time)
+            comment_query = comment_query.where(Comment.created_utc >= self.start_time)
+        if self.end_time:
+            submission_query = submission_query.where(Submission.created_utc <= self.end_time)
+            comment_query = comment_query.where(Comment.created_utc <= self.end_time)
 
         combined = (
             submission_query.union_all(comment_query)

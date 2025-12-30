@@ -56,6 +56,7 @@ class Vectorizer:
         docs = []
         content_types = []
         ids = []
+        timestamps = []
 
         for comment in comments:
             submission = submissions_by_id.get(comment.submission_id)
@@ -70,6 +71,7 @@ class Vectorizer:
             ids.append(comment.id)
             content_types.append(ContentType.COMMENT)
             docs.append(doc)
+            timestamps.append(comment.created_utc)
 
         for submission in submissions:
             doc = self.small_to_large.submission(submission)
@@ -77,6 +79,7 @@ class Vectorizer:
             ids.append(submission.id)
             content_types.append(ContentType.SUBMISSION)
             docs.append(doc)
+            timestamps.append(submission.created_utc)
 
         # Index all documents - the indexing API handles deduplication automatically
         total_items = len(ids)
@@ -92,8 +95,11 @@ class Vectorizer:
             batch_ids = ids[i : i + batch_size]
             batch_types = content_types[i : i + batch_size]
             batch_docs = docs[i : i + batch_size]
+            batch_timestamps = timestamps[i : i + batch_size]
 
-            result = self.vector_store.add(batch_ids, batch_types, batch_docs, username=username)
+            result = self.vector_store.add(
+                batch_ids, batch_types, batch_docs, batch_timestamps, username=username
+            )
 
             # Accumulate totals
             for key in totals:

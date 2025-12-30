@@ -94,9 +94,18 @@ class VectorStoreManager:
         content_ids: list[str],
         content_types: list[ContentType],
         texts: list[str],
+        timestamps: list[int | None],
         username: str | None = None,
     ) -> dict:
-        """Add documents to the vector store with deduplication."""
+        """Add documents to the vector store with deduplication.
+
+        Args:
+            content_ids: Unique IDs for each document
+            content_types: Type of content (submission/comment)
+            texts: Document texts to embed
+            timestamps: Unix timestamps (created_utc) for each document
+            username: Username who authored the content
+        """
         if not texts:
             return {"num_added": 0, "num_skipped": 0}
 
@@ -105,8 +114,8 @@ class VectorStoreManager:
 
         # Filter to only new content
         new_items = [
-            (cid, ctype, text)
-            for cid, ctype, text in zip(content_ids, content_types, texts)
+            (cid, ctype, text, ts)
+            for cid, ctype, text, ts in zip(content_ids, content_types, texts, timestamps)
             if cid not in existing_ids
         ]
 
@@ -120,13 +129,15 @@ class VectorStoreManager:
         new_ids = [item[0] for item in new_items]
         new_types = [item[1] for item in new_items]
         new_texts = [item[2] for item in new_items]
+        new_timestamps = [item[3] for item in new_items]
         metadatas = [
             {
                 "content_id": cid,
                 "content_type": ctype.value,
                 "username": username or "",
+                "created_utc": ts or 0,
             }
-            for cid, ctype in zip(new_ids, new_types)
+            for cid, ctype, ts in zip(new_ids, new_types, new_timestamps)
         ]
 
         # Add to PGVector directly

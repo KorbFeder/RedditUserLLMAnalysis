@@ -20,12 +20,14 @@ def parse_search_results(content: str) -> list[dict]:
 
     results = []
     # Split by separator
-    chunks = content.split("\n\n---\n\n") if "\n\n---\n\n" in content else [content]
+    separator = "\n\n===RESULT_SEPARATOR===\n\n"
+    chunks = content.split(separator) if separator in content else [content]
 
     for chunk in chunks:
         result_info = {}
         lines = chunk.split("\n")
         for line in lines:
+            line = line.strip()  # Remove leading/trailing whitespace
             if line.startswith("[SUBMISSION_TITLE]"):
                 result_info["title"] = line.replace("[SUBMISSION_TITLE]", "").strip()
             elif line.startswith("[SUBREDDIT]"):

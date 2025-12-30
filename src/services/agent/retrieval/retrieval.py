@@ -37,15 +37,33 @@ class Retriever:
         self.sparse_weight = search_config.get("sparse", {}).get("weight", 0.5)
         self.rrf_k = search_config.get("rrf_k", 60)
 
-    def _create_hybrid_retriever(self, username: str) -> EnsembleRetriever:
-        """Create a hybrid retriever for the given user."""
+    def _create_hybrid_retriever(
+        self,
+        username: str,
+        start_time: int | None = None,
+        end_time: int | None = None,
+    ) -> EnsembleRetriever:
+        """Create a hybrid retriever for the given user with optional time filtering."""
+        # Build filter for dense search
+        dense_filter = {"username": username}
+        if start_time is not None:
+            dense_filter["created_utc"] = {"$gte": start_time}
+        if end_time is not None:
+            if "created_utc" in dense_filter:
+                # Combine with existing filter
+                dense_filter["created_utc"]["$lte"] = end_time
+            else:
+                dense_filter["created_utc"] = {"$lte": end_time}
+
         dense = self.vector_store.as_retriever(
-            search_kwargs={"k": self.dense_k, "filter": {"username": username}}
+            search_kwargs={"k": self.dense_k, "filter": dense_filter}
         )
         sparse = PgSparseRetriever(
             session=self.session,
             username=username,
             k=self.sparse_k,
+            start_time=start_time,
+            end_time=end_time,
         )
         return EnsembleRetriever(
             retrievers=[dense, sparse],
@@ -53,7 +71,14 @@ class Retriever:
             c=self.rrf_k,
         )
 
-    def search(self, query: str, username: str, limit: int | None = None) -> list[CommentChain]:
+    def search(
+        self,
+        query: str,
+        username: str,
+        limit: int | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
+    ) -> list[CommentChain]:
         """
         Search user's content using hybrid search (dense + sparse) with RRF fusion.
 
@@ -61,11 +86,13 @@ class Retriever:
             query: Search query text
             username: Filter results to this user's content
             limit: Max results to return
+            start_time: Only include content created after this Unix timestamp
+            end_time: Only include content created before this Unix timestamp
 
         Returns:
             Fused and ranked search results
         """
-        hybrid = self._create_hybrid_retriever(username)
+        hybrid = self._create_hybrid_retriever(username, start_time, end_time)
         docs = hybrid.invoke(query)
 
         logger.info(f"Hybrid retrieval result count: {len(docs)}")
@@ -78,18 +105,26 @@ class Retriever:
 
         return result
 
-    def search_with_scores(self, query: str, username: str) -> list[tuple[CommentChain, float]]:
+    def search_with_scores(
+        self,
+        query: str,
+        username: str,
+        start_time: int | None = None,
+        end_time: int | None = None,
+    ) -> list[tuple[CommentChain, float]]:
         """
         Search user's content and return results with reranker scores.
 
         Args:
             query: Search query text
             username: Filter results to this user's content
+            start_time: Only include content created after this Unix timestamp
+            end_time: Only include content created before this Unix timestamp
 
         Returns:
             List of (CommentChain, score) tuples, sorted by score descending
         """
-        hybrid = self._create_hybrid_retriever(username)
+        hybrid = self._create_hybrid_retriever(username, start_time, end_time)
         docs = hybrid.invoke(query)
 
         logger.info(f"Hybrid retrieval result count: {len(docs)}")
@@ -100,9 +135,11 @@ class Retriever:
         return result
 
     def fetch_from_db(self, docs: list[Document]) -> list[CommentChain]:
-        """Convert retrieved Documents to CommentChains with full context."""
-        chains: list[CommentChain] = []
+        """Convert retrieved Documents to CommentChains with full context.
 
+        Deduplicates by submission - multiple comments from the same thread
+        are merged into a single CommentChain to avoid context duplication.
+        """
         # Separate by content type
         submission_ids = [
             doc.metadata["content_id"]
@@ -127,16 +164,35 @@ class Retriever:
         # Batch fetch submissions (1 query)
         submissions = {s.id: s for s in self.store.get_submissions(list(all_submission_ids))}
 
-        # Build chains for submissions (user authored a post)
-        for sid in submission_ids:
-            if sid in submissions:
-                chains.append(CommentChain(submission=submissions[sid], comments=[]))
+        # Group comments by submission to deduplicate
+        comments_by_submission: dict[str, dict[str, any]] = {}
 
-        # Build chains for comments
         for chain in comment_chains_dict.values():
             if chain:
-                sub = submissions.get(chain[0].submission_id)
-                if sub:
-                    chains.append(CommentChain(submission=sub, comments=chain))
+                sub_id = chain[0].submission_id
+                if sub_id not in comments_by_submission:
+                    comments_by_submission[sub_id] = {}
+                # Add all comments from this chain (deduped by id)
+                for comment in chain:
+                    comments_by_submission[sub_id][comment.id] = comment
+
+        # Build deduplicated chains
+        chains: list[CommentChain] = []
+
+        # Add submission-only chains (user authored posts, not covered by comments)
+        for sid in submission_ids:
+            if sid in submissions and sid not in comments_by_submission:
+                chains.append(CommentChain(submission=submissions[sid], comments=[]))
+
+        # Add merged comment chains (one per submission)
+        for sub_id, comments_dict in comments_by_submission.items():
+            sub = submissions.get(sub_id)
+            if sub:
+                # Sort comments by created_utc for chronological order
+                sorted_comments = sorted(
+                    comments_dict.values(),
+                    key=lambda c: c.created_utc or 0
+                )
+                chains.append(CommentChain(submission=sub, comments=sorted_comments))
 
         return chains
