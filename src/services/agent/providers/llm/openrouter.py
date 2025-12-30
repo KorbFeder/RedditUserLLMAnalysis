@@ -36,5 +36,5 @@ def fall_back_model(model_name: str):
     best_free_models = sorted(free_models, key=lambda x: x["context_length"] or 0, reverse=True) if free_models else None
 
     new_model_name = best_free_models[0]["id"]
-    logger.info(f"The model {model_name} does not exists on the open router API, using fallback model {new_model_name}")
+    logger.info(f"The model {model_name} does not exist on the OpenRouter API, using fallback model {new_model_name}")
     return new_model_name

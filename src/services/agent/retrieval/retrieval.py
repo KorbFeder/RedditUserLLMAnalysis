@@ -25,6 +25,7 @@ class Retriever:
             embeddings=embeddings,
             model_name=model_name,
             dimensions=dimensions,
+            session=session,
         )
         self.store = PostgresStore(session)
         self.reranker = Reranker(config)

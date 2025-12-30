@@ -6,10 +6,13 @@ from dataclasses import dataclass
 from textwrap import dedent
 from typing import Optional
 from sqlalchemy.orm import Session
+import logging
 
 from src.services.agent.tools import create_tools
 from src.services.agent.retrieval.retrieval import Retriever, CommentChain
 from src.services.agent.providers.llm.openrouter import get_model as get_openrouter_model
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class SentimentContext:
@@ -33,7 +36,7 @@ def retrieval_node(state: SentimentState, runtime: Runtime[SentimentContext]):
 
 def main_worker_node(state: SentimentState, runtime: Runtime[SentimentContext]):
     if not state['query'] or not state['username'] or not runtime.context.config:
-        raise ValueError("Error: no query and username")
+        raise ValueError("Error: missing query, username, or config")
 
 
     config = runtime.context.config
@@ -42,19 +45,19 @@ def main_worker_node(state: SentimentState, runtime: Runtime[SentimentContext]):
     system_prompt = dedent(f"""
         You are an expert Reddit analysis agent, your goal is to analyze a single reddit user 
         with regards to a question. Try to dig as deep as possible by utilizing the MCP/Tools given.
-        The initial reqeust comes with a simple rag request already but you can do as much rag requests
+        The initial request comes with a simple rag request already but you can do as much rag requests
         as possible. Rewrite the questions into a rag query to get better results the rag system uses
-        a sparse + dense searach with rrf and reranking. The Rag database contains entries from historical 
+        a sparse + dense search with rrf and reranking. The Rag database contains entries from historical 
         to current reddit comments and posts as well as already deleted ones. We dont have any rate limits 
         or anything for rag so query as much as you like to get to a very good solution to the question. 
     """)
 
     user_prompt = HumanMessage(dedent(f"""
         Analyze the user: {state['username']} by answering the following question: {state['query']}. 
-        The previous RAG reqeust already gave us this result: 
+        The previous RAG request already gave us this result:
         {state['retrieval_node_docs']}
-        Try to solve the query as good as possible and find as much evidence as possible for it, also add the 
-        url of the reddit post as a source for differnet findings. 
+        Try to solve the query as good as possible and find as much evidence as possible for it, also add the
+        url of the reddit post as a source for different findings. 
     """))
 
     # Get model based on provider config
@@ -89,11 +92,16 @@ def build_graph():
     return graph.compile()
 
 
-def run_sentiment_analysis(config: dict, session: Session, username: str, query: str):
+def run_sentiment_analysis(config: dict, session: Session, username: str, query: str) -> dict:
+    """Run sentiment analysis and return full result state.
+
+    Returns:
+        dict with keys: messages, username, query, retrieval_node_docs
+    """
     app = build_graph()
     context = SentimentContext(config=config, session=session)
     result = app.invoke(
         {"messages": [], "username": username, "query": query},
         context=context
     )
-    return result["messages"][-1].content
+    return dict(result)

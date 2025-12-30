@@ -25,6 +25,7 @@ class Vectorizer:
             embeddings=embeddings,
             model_name=model_name,
             dimensions=dimensions,
+            session=session,
         )
         self.small_to_large = DocumentBuilder()
 

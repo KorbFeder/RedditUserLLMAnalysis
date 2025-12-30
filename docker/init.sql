@@ -64,6 +64,18 @@ CREATE TABLE user_contribution_cache_status (
     newest_comment_cursor BIGINT
 );
 
+CREATE TABLE embedding_records (
+    content_id TEXT NOT NULL,
+    collection_name TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    username TEXT NOT NULL,
+    embedded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (content_id, collection_name)
+);
+
+CREATE INDEX idx_embedding_records_collection ON embedding_records(collection_name);
+CREATE INDEX idx_embedding_records_username ON embedding_records(username);
+
 CREATE INDEX idx_submissions_author ON submissions(author);
 CREATE INDEX idx_submissions_subreddit ON submissions(subreddit);
 CREATE INDEX idx_submissions_created_utc ON submissions(created_utc);

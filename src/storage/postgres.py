@@ -19,10 +19,10 @@ class PostgresStore:
         if not submissions:
             return
 
-        comment_ids = [submission.id for submission in submissions]
-        existing_ids = self.submissions_exist(comment_ids)
+        submission_ids = [submission.id for submission in submissions]
+        existing_ids = self.submissions_exist(submission_ids)
 
-        # Filter to only new comments
+        # Filter to only new submissions
         new_submissions = [submission for submission in submissions if submission.id not in existing_ids]
 
         if new_submissions:

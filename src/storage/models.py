@@ -96,3 +96,14 @@ class UserContributionCacheStatus(Base):
     username: Mapped[str] = mapped_column(primary_key=True)
     newest_submission_cursor: Mapped[int | None] = mapped_column(default=None)
     newest_comment_cursor: Mapped[int | None] = mapped_column(default=None)
+
+
+class EmbeddingRecord(Base):
+    """Tracks which content has been embedded in each vector collection."""
+    __tablename__ = 'embedding_records'
+
+    content_id: Mapped[str] = mapped_column(primary_key=True)
+    collection_name: Mapped[str] = mapped_column(primary_key=True)
+    content_type: Mapped[str]  # 'submission' or 'comment'
+    username: Mapped[str]
+    embedded_at: Mapped[datetime] = mapped_column(default=func.now(), init=False)

@@ -31,7 +31,7 @@ class IngestionService:
         parent_ids = {r[1] for r in relations if r[1] and r[1] not in seen_ids and r[1] != r[2]}
         submission_ids = {r[2] for r in relations if r[2]}
 
-        # Fetches the root submission of alle the comments the user commented on, maybe in parallel?
+        # Fetches the root submission of all the comments the user commented on, maybe in parallel?
         await self.sync_root_submission(submission_ids)          
 
         # Walk parent comment chain using lightweight queries
