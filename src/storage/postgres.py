@@ -279,3 +279,81 @@ class PostgresStore:
 
         return results
 
+    def get_user_stats(self, username: str) -> dict:
+        """Get aggregate statistics about a user's stored content.
+
+        Returns dict with:
+            - earliest_utc: Unix timestamp of oldest content
+            - latest_utc: Unix timestamp of newest content
+            - total_submissions: Number of submissions
+            - total_comments: Number of comments
+            - activity_by_year: Dict of {year: count}
+            - top_subreddits: List of (subreddit, count) tuples
+        """
+        # Submission stats
+        sub_stats = self.session.execute(
+            select(
+                func.count(Submission.id),
+                func.min(Submission.created_utc),
+                func.max(Submission.created_utc)
+            ).where(Submission.author == username)
+        ).one()
+
+        # Comment stats
+        com_stats = self.session.execute(
+            select(
+                func.count(Comment.id),
+                func.min(Comment.created_utc),
+                func.max(Comment.created_utc)
+            ).where(Comment.author == username)
+        ).one()
+
+        # Combine time ranges
+        times = [t for t in [sub_stats[1], sub_stats[2], com_stats[1], com_stats[2]] if t]
+        earliest_utc = min(times) if times else None
+        latest_utc = max(times) if times else None
+
+        # Activity by year (comments + submissions combined)
+        yearly_comments = self.session.execute(
+            select(
+                func.extract('year', func.to_timestamp(Comment.created_utc)).label('year'),
+                func.count().label('cnt')
+            ).where(Comment.author == username)
+            .group_by('year')
+        ).all()
+
+        yearly_submissions = self.session.execute(
+            select(
+                func.extract('year', func.to_timestamp(Submission.created_utc)).label('year'),
+                func.count().label('cnt')
+            ).where(Submission.author == username)
+            .group_by('year')
+        ).all()
+
+        # Merge yearly counts
+        activity_by_year = {}
+        for year, cnt in yearly_comments:
+            if year:
+                activity_by_year[int(year)] = cnt
+        for year, cnt in yearly_submissions:
+            if year:
+                activity_by_year[int(year)] = activity_by_year.get(int(year), 0) + cnt
+
+        # Top subreddits (from comments, which are more numerous)
+        top_subs = self.session.execute(
+            select(Comment.subreddit, func.count().label('cnt'))
+            .where(Comment.author == username)
+            .group_by(Comment.subreddit)
+            .order_by(func.count().desc())
+            .limit(10)
+        ).all()
+
+        return {
+            "earliest_utc": earliest_utc,
+            "latest_utc": latest_utc,
+            "total_submissions": sub_stats[0] or 0,
+            "total_comments": com_stats[0] or 0,
+            "activity_by_year": dict(sorted(activity_by_year.items())),
+            "top_subreddits": [(sub, cnt) for sub, cnt in top_subs],
+        }
+
