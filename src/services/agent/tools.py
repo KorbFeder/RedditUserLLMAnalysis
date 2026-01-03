@@ -4,8 +4,16 @@ from src.services.agent.retrieval.retrieval import Retriever
 from src.storage.postgres import PostgresStore
 from langchain.tools import tool
 
-def create_tools(config: dict, session):
-    retriever = Retriever(config, session)
+def create_tools(config: dict, session, retriever=None):
+    """Create tools for the agent.
+
+    Args:
+        config: Configuration dict
+        session: Database session
+        retriever: Optional pre-initialized Retriever (to avoid parallel init issues)
+    """
+    if retriever is None:
+        retriever = Retriever(config, session)
     store = PostgresStore(session)
 
     @tool
@@ -91,8 +99,14 @@ def create_tools(config: dict, session):
 
     return [search_user_content, get_user_profile]
 
-def create_timeinterval_tools(config: dict, session, start_time: int | None = None, end_time: int | None = None):
-    retriever = Retriever(config, session)
+def create_timeinterval_tools(retriever, start_time: int | None = None, end_time: int | None = None):
+    """Create tools scoped to a specific time interval.
+
+    Args:
+        retriever: Pre-initialized Retriever instance (shared to avoid parallel init issues)
+        start_time: Start of time interval (Unix timestamp)
+        end_time: End of time interval (Unix timestamp)
+    """
 
     @tool
     def search_user_content(
@@ -101,23 +115,18 @@ def create_timeinterval_tools(config: dict, session, start_time: int | None = No
     ) -> str:
         """Search a Reddit user's posts and comments for content matching the query.
 
+        Note: This search is automatically scoped to a specific time interval.
+
         Args:
             query: The search query describing what to look for
             username: The Reddit username to search
-
-        Examples:
-            - Search all time: search_user_content("climate change", "username")
         """
-        start_time = start_time
-        end_time = end_time
+        # start_time and end_time are captured from outer scope via closure
         results = retriever.search(
             query, username, start_time=start_time, end_time=end_time
         )
         if not results:
-            time_desc = ""
-            if start_time or end_time:
-                time_desc = f" in the specified time range"
-            return f"No results found for user {username} matching: {query}{time_desc}"
+            return f"No results found for user {username} matching: {query} in this time period"
         return "\n\n===RESULT_SEPARATOR===\n\n".join([r.to_context_string() for r in results])
 
     return [search_user_content]

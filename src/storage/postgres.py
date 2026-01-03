@@ -339,11 +339,11 @@ class PostgresStore:
             if year:
                 activity_by_year[int(year)] = activity_by_year.get(int(year), 0) + cnt
 
-        # Top subreddits (from comments, which are more numerous)
+        # Top subreddits (from submissions - comments don't have subreddit field)
         top_subs = self.session.execute(
-            select(Comment.subreddit, func.count().label('cnt'))
-            .where(Comment.author == username)
-            .group_by(Comment.subreddit)
+            select(Submission.subreddit, func.count().label('cnt'))
+            .where(Submission.author == username)
+            .group_by(Submission.subreddit)
             .order_by(func.count().desc())
             .limit(10)
         ).all()

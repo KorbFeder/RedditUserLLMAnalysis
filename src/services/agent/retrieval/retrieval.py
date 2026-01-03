@@ -45,15 +45,18 @@ class Retriever:
     ) -> EnsembleRetriever:
         """Create a hybrid retriever for the given user with optional time filtering."""
         # Build filter for dense search
-        dense_filter = {"username": username}
+        # langchain_postgres requires $and for multiple conditions on same field
+        filter_conditions = [{"username": username}]
         if start_time is not None:
-            dense_filter["created_utc"] = {"$gte": start_time}
+            filter_conditions.append({"created_utc": {"$gte": start_time}})
         if end_time is not None:
-            if "created_utc" in dense_filter:
-                # Combine with existing filter
-                dense_filter["created_utc"]["$lte"] = end_time
-            else:
-                dense_filter["created_utc"] = {"$lte": end_time}
+            filter_conditions.append({"created_utc": {"$lte": end_time}})
+
+        # Use $and if multiple conditions, otherwise simple filter
+        if len(filter_conditions) == 1:
+            dense_filter = filter_conditions[0]
+        else:
+            dense_filter = {"$and": filter_conditions}
 
         dense = self.vector_store.as_retriever(
             search_kwargs={"k": self.dense_k, "filter": dense_filter}

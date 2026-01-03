@@ -1,18 +1,17 @@
 from deepagents import create_deep_agent
 from langgraph.graph import StateGraph, START, END, MessagesState
 from langgraph.runtime import Runtime
-from langgraph.types import Send
+from langgraph.types import Send, RetryPolicy
 from langchain.messages import HumanMessage
-from dataclasses import dataclass 
+from dataclasses import dataclass
 from textwrap import dedent
-from typing import Optional
 from sqlalchemy.orm import Session
 from typing import TypedDict, Annotated
 import operator
 import logging
 
 from src.services.agent.tools import create_tools, create_timeinterval_tools
-from src.services.agent.retrieval.retrieval import Retriever, CommentChain
+from src.services.agent.retrieval.retrieval import Retriever
 from src.services.agent.providers.llm.openrouter import get_model as get_openrouter_model
 from src.storage.postgres import PostgresStore
 
@@ -24,13 +23,13 @@ class SentimentContext:
     config: dict
     session: Session
     store: PostgresStore
+    retriever: Retriever  # Initialized once, shared by all workers
 
 class SentimentState(MessagesState):
     username: str
     query: str
     time_intervals: list[dict]  # Computed by orchestrator, used by routing function
-    worker_results: Annotated[list, operator.add]  # Reducer merges worker outputs
-    retrieval_node_docs: Optional[list[CommentChain]] = None
+    worker_results: Annotated[list, operator.add]  # Workers write, main_worker reads
 
 class TimeintervalWorkerState(TypedDict):
     username: str
@@ -38,14 +37,6 @@ class TimeintervalWorkerState(TypedDict):
     start_utc: int
     end_utc: int
 
-def retrieval_node(state: SentimentState, runtime: Runtime[SentimentContext]) -> SentimentState:
-    if not state['query'] or not state['username']:
-        raise ValueError("Error: no query and username")
-
-    retriever = Retriever(runtime.context.config, runtime.context.session)
-    rag_result = retriever.search(state['query'], state['username'])
-    return {"retrieval_node_docs": rag_result}
-    
 def timeinterval_orchestrator_node(state: SentimentState, runtime: Runtime[SentimentContext]) -> dict:
     """Compute time intervals and store in state. Routing function handles Send."""
     user_stats = runtime.context.store.get_user_stats(state['username'])
@@ -105,8 +96,9 @@ def timeinterval_worker_node(state: TimeintervalWorkerState, runtime: Runtime[Se
     config = runtime.context.config
     start_utc = state['start_utc']
     end_utc = state['end_utc']
-    
-    tools = create_timeinterval_tools(config, runtime.context.session, start_utc, end_utc)
+
+    # Use pre-initialized retriever from context to avoid parallel init issues
+    tools = create_timeinterval_tools(runtime.context.retriever, start_utc, end_utc)
 
     system_prompt = dedent(f"""
         You are an expert Reddit analysis agent, your goal is to analyze a single reddit user 
@@ -141,89 +133,47 @@ def timeinterval_worker_node(state: TimeintervalWorkerState, runtime: Runtime[Se
     result = agent.invoke({"messages": [user_prompt]})
     return {"worker_results": [{"period": f"{state['start_utc']}-{state['end_utc']}", "analysis": result["messages"][-1].content}]}
 
-def timeinterval_reducer_node(state: SentimentState, runtime: Runtime[SentimentContext]) -> dict:
-    """Merge results from all time-interval workers into synthesized analysis."""
+
+def main_worker_node(state: SentimentState, runtime: Runtime[SentimentContext]):
+    """Synthesize results from time-interval workers into final analysis."""
+    if not state['query'] or not state['username'] or not runtime.context.config:
+        raise ValueError("Error: missing query, username, or config")
+
     worker_results = state.get('worker_results', [])
 
-    if not worker_results:
-        logger.warning("No worker results to reduce")
-        return {"messages": []}
-
     # Format worker results for synthesis
-    formatted = []
-    for r in worker_results:
-        formatted.append(f"**Period {r['period']}:**\n{r['analysis']}")
-
-    combined = "\n\n---\n\n".join(formatted)
+    if worker_results:
+        formatted = []
+        for r in worker_results:
+            formatted.append(f"**Period {r['period']}:**\n{r['analysis']}")
+        combined_results = "\n\n---\n\n".join(formatted)
+    else:
+        combined_results = "No results from time-interval analysis."
 
     config = runtime.context.config
-    tools = create_tools(config, runtime.context.session)
+    tools = create_tools(config, runtime.context.session, runtime.context.retriever)
 
     system_prompt = dedent(f"""
-        You are a synthesis agent that combines Reddit analysis results from different time periods.
+        You are an expert Reddit analysis agent that synthesizes findings from multiple time periods.
         You have access to tools to query more data if needed to clarify or verify findings.
-        Weight recent activity more heavily than older activity when drawing conclusions.
+
+        Guidelines:
+        - Weight recent activity more heavily than older activity
+        - Note any evolution in sentiment/opinions over time
+        - Highlight contradictions between periods if any
+        - Use tools to dig deeper if the existing analysis is insufficient
     """)
 
-    user_prompt = HumanMessage(content=dedent(f"""
+    user_prompt = HumanMessage(dedent(f"""
         Synthesize the following Reddit analysis results for user: {state['username']}
 
         Original question: {state['query']}
 
         Results by time period:
-        {combined}
+        {combined_results}
 
-        Provide a unified analysis that:
-        1. Weighs recent activity more heavily than older activity
-        2. Notes any evolution in sentiment/opinions over time
-        3. Highlights contradictions between periods if any
-        4. Gives a final assessment answering the original question
-
-        Use the tools if you need to query for additional evidence or clarification.
-    """))
-
-    provider = config['agent'].get('provider', 'openrouter')
-    model_name = config['agent']['main_model_name']
-
-    if provider == 'openrouter':
-        model = get_openrouter_model(model_name)
-    else:
-        raise ValueError(f"Unsupported provider: {provider}")
-
-    agent = create_deep_agent(
-        model=model,
-        tools=tools,
-        system_prompt=system_prompt
-    )
-
-    result = agent.invoke({"messages": [user_prompt]})
-    return {"messages": result["messages"]}
-
-
-def main_worker_node(state: SentimentState, runtime: Runtime[SentimentContext]):
-    if not state['query'] or not state['username'] or not runtime.context.config:
-        raise ValueError("Error: missing query, username, or config")
-
-
-    config = runtime.context.config
-    tools = create_tools(config, runtime.context.session)
-
-    system_prompt = dedent(f"""
-        You are an expert Reddit analysis agent, your goal is to analyze a single reddit user 
-        with regards to a question. Try to dig as deep as possible by utilizing the MCP/Tools given.
-        The initial request comes with a simple rag request already but you can do as much rag requests
-        as possible. Rewrite the questions into a rag query to get better results the rag system uses
-        a sparse + dense search with rrf and reranking. The Rag database contains entries from historical 
-        to current reddit comments and posts as well as already deleted ones. We dont have any rate limits 
-        or anything for rag so query as much as you like to get to a very good solution to the question. 
-    """)
-
-    user_prompt = HumanMessage(dedent(f"""
-        Analyze the user: {state['username']} by answering the following question: {state['query']}. 
-        The previous RAG request already gave us this result:
-        {state['retrieval_node_docs']}
-        Try to solve the query as good as possible and find as much evidence as possible for it, also add the
-        url of the reddit post as a source for different findings. 
+        Provide a unified analysis that answers the original question.
+        Include URLs as sources where available. Use the tools if you need additional evidence.
     """))
 
     # Get model based on provider config
@@ -248,20 +198,23 @@ def main_worker_node(state: SentimentState, runtime: Runtime[SentimentContext]):
 def build_graph():
     graph = StateGraph(SentimentState, context_schema=SentimentContext)
 
+    # Retry policy for LLM calls (handles provider 502 errors, rate limits, etc.)
+    llm_retry_policy = RetryPolicy(max_attempts=3, initial_interval=2.0, backoff_factor=2.0)
+
     # Add nodes
     graph.add_node("timeinterval_orchestrator_node", timeinterval_orchestrator_node)
-    graph.add_node("timeinterval_worker_node", timeinterval_worker_node)
-    graph.add_node("timeinterval_reducer_node", timeinterval_reducer_node)
+    graph.add_node("timeinterval_worker_node", timeinterval_worker_node, retry_policy=llm_retry_policy)
+    graph.add_node("main_worker_node", main_worker_node, retry_policy=llm_retry_policy)
 
-    # Wiring: START -> orchestrator -> (fan-out via Send) -> workers -> reducer -> END
+    # Wiring: START -> orchestrator -> (fan-out) workers -> main_worker (synthesizes) -> END
     graph.add_edge(START, "timeinterval_orchestrator_node")
     graph.add_conditional_edges(
         "timeinterval_orchestrator_node",
         route_to_workers,
         ["timeinterval_worker_node"]
     )
-    graph.add_edge("timeinterval_worker_node", "timeinterval_reducer_node")
-    graph.add_edge("timeinterval_reducer_node", END)
+    graph.add_edge("timeinterval_worker_node", "main_worker_node")
+    graph.add_edge("main_worker_node", END)
 
     return graph.compile()
 
@@ -273,7 +226,16 @@ def run_sentiment_analysis(config: dict, session: Session, username: str, query:
         dict with keys: messages, username, query, time_intervals, worker_results
     """
     app = build_graph()
-    context = SentimentContext(config=config, session=session, store=PostgresStore(session))
+
+    # Initialize retriever once - shared by all workers to avoid parallel init issues
+    retriever = Retriever(config, session)
+
+    context = SentimentContext(
+        config=config,
+        session=session,
+        store=PostgresStore(session),
+        retriever=retriever
+    )
     result = app.invoke(
         {
             "messages": [],
