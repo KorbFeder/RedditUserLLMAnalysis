@@ -15,45 +15,62 @@ class PostgresStore:
     def __init__(self: "PostgresStore", session: Session):
         self.session = session
 
-    def add_submissions(self: "PostgresStore", submissions: list[Submission]) -> None:
+    def add_submissions(self: "PostgresStore", submissions: list[Submission]) -> int:
+        """Add new submissions, skipping duplicates. Returns count of added."""
         if not submissions:
-            return
+            return 0
 
-        submission_ids = [submission.id for submission in submissions]
-        existing_ids = self.submissions_exist(submission_ids)
+        try:
+            submission_ids = [submission.id for submission in submissions]
+            existing_ids = self.submissions_exist(submission_ids)
 
-        # Filter to only new submissions
-        new_submissions = [submission for submission in submissions if submission.id not in existing_ids]
+            # Filter to only new submissions
+            new_submissions = [submission for submission in submissions if submission.id not in existing_ids]
 
-        if new_submissions:
-            self.session.add_all(new_submissions)
-            self.session.commit()
+            if new_submissions:
+                self.session.add_all(new_submissions)
+                self.session.commit()
 
-        logger.info(f"Added {len(submissions)} to the database (submission table)")
+            logger.info(f"Added {len(new_submissions)} submissions (skipped {len(existing_ids)} existing)")
+            return len(new_submissions)
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to add submissions: {e}")
+            raise
 
-    def add_comments(self: "PostgresStore", comments: list[Comment]) -> None:
+    def add_comments(self: "PostgresStore", comments: list[Comment]) -> int:
+        """Add new comments, skipping duplicates. Returns count of added."""
         if not comments:
-            return
+            return 0
 
-        # Deduplicate input by ID first
-        comments_by_id = {c.id: c for c in comments}
-        unique_comments = list(comments_by_id.values())
+        try:
+            # Deduplicate input by ID first
+            comments_by_id = {c.id: c for c in comments}
+            unique_comments = list(comments_by_id.values())
 
-        # Force fresh read from database
-        self.session.expire_all()
+            existing_ids = self.comments_exist([c.id for c in unique_comments])
+            new_comments = [c for c in unique_comments if c.id not in existing_ids]
 
-        existing_ids = self.comments_exist([c.id for c in unique_comments])
-        new_comments = [c for c in unique_comments if c.id not in existing_ids]
+            if new_comments:
+                self.session.add_all(new_comments)
+                self.session.commit()
 
-        if new_comments:
-            self.session.add_all(new_comments)
+            logger.info(f"Added {len(new_comments)} comments (skipped {len(existing_ids)} existing)")
+            return len(new_comments)
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to add comments: {e}")
+            raise
+
+    def upsert_user_cache_status(self: "PostgresStore", status: UserContributionCacheStatus) -> None:
+        """Upsert user cache status record."""
+        try:
+            self.session.merge(status)
             self.session.commit()
-
-        logger.info(f"Added {len(comments)} to the database (comment table)")
-
-    def upsert_user_cache_status(self: "PostgresStore", status: UserContributionCacheStatus):
-        self.session.merge(status)
-        self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to upsert user cache status for {status.username}: {e}")
+            raise
 
     def get_submissions(self: "PostgresStore", ids: list[str]) -> list[Submission]:
         if not ids:
@@ -108,92 +125,126 @@ class PostgresStore:
         if not submissions:
             return 0
 
-        values_list = []
-        for sub in submissions:
-            values = asdict(sub)
-            values['fetched_at'] = func.now()
-            values_list.append(values)
+        try:
+            values_list = []
+            for sub in submissions:
+                values = asdict(sub)
+                values['fetched_at'] = func.now()
+                values_list.append(values)
 
-        stmt = insert(Submission).values(values_list).on_conflict_do_update(
-            index_elements=['id'],
-            set_={
-                'raw_json': insert(Submission).excluded.raw_json,
-                'score': insert(Submission).excluded.score,
-                'ups': insert(Submission).excluded.ups,
-                'upvote_ratio': insert(Submission).excluded.upvote_ratio,
-                'num_comments': insert(Submission).excluded.num_comments,
-                'is_deleted': insert(Submission).excluded.is_deleted,
-                'is_archived': insert(Submission).excluded.is_archived,
-                'fetched_at': insert(Submission).excluded.fetched_at,
-            }
-        )
-        self.session.execute(stmt)
-        self.session.commit()
-        logger.info(f"Upserted {len(submissions)} submissions")
-        return len(submissions)
+            stmt = insert(Submission).values(values_list).on_conflict_do_update(
+                index_elements=['id'],
+                set_={
+                    'raw_json': insert(Submission).excluded.raw_json,
+                    'score': insert(Submission).excluded.score,
+                    'ups': insert(Submission).excluded.ups,
+                    'upvote_ratio': insert(Submission).excluded.upvote_ratio,
+                    'num_comments': insert(Submission).excluded.num_comments,
+                    'is_deleted': insert(Submission).excluded.is_deleted,
+                    'is_archived': insert(Submission).excluded.is_archived,
+                    'fetched_at': insert(Submission).excluded.fetched_at,
+                }
+            )
+            self.session.execute(stmt)
+            self.session.commit()
+            logger.info(f"Upserted {len(submissions)} submissions")
+            return len(submissions)
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to upsert submissions: {e}")
+            raise
 
     def upsert_comments(self: "PostgresStore", comments: list[Comment]) -> int:
         """Upsert comments - bulk insert with conflict handling."""
         if not comments:
             return 0
 
-        values_list = []
-        for com in comments:
-            values = asdict(com)
-            values['fetched_at'] = func.now()
-            values_list.append(values)
+        try:
+            values_list = []
+            for com in comments:
+                values = asdict(com)
+                values['fetched_at'] = func.now()
+                values_list.append(values)
 
-        stmt = insert(Comment).values(values_list).on_conflict_do_update(
-            index_elements=['id'],
-            set_={
-                'raw_json': insert(Comment).excluded.raw_json,
-                'score': insert(Comment).excluded.score,
-                'ups': insert(Comment).excluded.ups,
-                'is_deleted': insert(Comment).excluded.is_deleted,
-                'is_archived': insert(Comment).excluded.is_archived,
-                'fetched_at': insert(Comment).excluded.fetched_at,
-            }
-        )
-        self.session.execute(stmt)
-        self.session.commit()
-        logger.info(f"Upserted {len(comments)} comments")
-        return len(comments)
+            stmt = insert(Comment).values(values_list).on_conflict_do_update(
+                index_elements=['id'],
+                set_={
+                    'raw_json': insert(Comment).excluded.raw_json,
+                    'score': insert(Comment).excluded.score,
+                    'ups': insert(Comment).excluded.ups,
+                    'is_deleted': insert(Comment).excluded.is_deleted,
+                    'is_archived': insert(Comment).excluded.is_archived,
+                    'fetched_at': insert(Comment).excluded.fetched_at,
+                }
+            )
+            self.session.execute(stmt)
+            self.session.commit()
+            logger.info(f"Upserted {len(comments)} comments")
+            return len(comments)
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to upsert comments: {e}")
+            raise
 
     def mark_submissions_deleted(self, ids: set[str]) -> None:
         """Mark submissions as deleted (in archive but not on Reddit)."""
         if not ids:
             return
-        self.session.query(Submission).filter(Submission.id.in_(ids)).update(
-            {'is_deleted': True}, synchronize_session=False
-        )
-        self.session.commit()
+        try:
+            self.session.query(Submission).filter(Submission.id.in_(ids)).update(
+                {'is_deleted': True}, synchronize_session=False
+            )
+            self.session.commit()
+            logger.debug(f"Marked {len(ids)} submissions as deleted")
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to mark submissions deleted: {e}")
+            raise
 
     def mark_comments_deleted(self, ids: set[str]) -> None:
         """Mark comments as deleted (in archive but not on Reddit)."""
         if not ids:
             return
-        self.session.query(Comment).filter(Comment.id.in_(ids)).update(
-            {'is_deleted': True}, synchronize_session=False
-        )
-        self.session.commit()
+        try:
+            self.session.query(Comment).filter(Comment.id.in_(ids)).update(
+                {'is_deleted': True}, synchronize_session=False
+            )
+            self.session.commit()
+            logger.debug(f"Marked {len(ids)} comments as deleted")
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to mark comments deleted: {e}")
+            raise
 
     def mark_submissions_not_archived(self, ids: set[str]) -> None:
         """Mark submissions as not archived (on Reddit but not in archive yet)."""
         if not ids:
             return
-        self.session.query(Submission).filter(Submission.id.in_(ids)).update(
-            {'is_archived': False}, synchronize_session=False
-        )
-        self.session.commit()
+        try:
+            self.session.query(Submission).filter(Submission.id.in_(ids)).update(
+                {'is_archived': False}, synchronize_session=False
+            )
+            self.session.commit()
+            logger.debug(f"Marked {len(ids)} submissions as not archived")
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to mark submissions not archived: {e}")
+            raise
 
     def mark_comments_not_archived(self, ids: set[str]) -> None:
         """Mark comments as not archived (on Reddit but not in archive yet)."""
         if not ids:
             return
-        self.session.query(Comment).filter(Comment.id.in_(ids)).update(
-            {'is_archived': False}, synchronize_session=False
-        )
-        self.session.commit()
+        try:
+            self.session.query(Comment).filter(Comment.id.in_(ids)).update(
+                {'is_archived': False}, synchronize_session=False
+            )
+            self.session.commit()
+            logger.debug(f"Marked {len(ids)} comments as not archived")
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to mark comments not archived: {e}")
+            raise
 
     def get_user_comment_relations(self, username: str) -> list[tuple[str, str, str]]:
         """Returns [(id, parent_id, submission_id), ...] for a user's comments"""
