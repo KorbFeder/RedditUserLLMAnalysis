@@ -6,7 +6,7 @@ from faststream.rabbit import RabbitBroker
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, ToolMessage
 
-from src.shared.job_messages import JobMessages, JobStatus
+from src.shared.job_messages import JobMessages, JobStatus, JobType
 from src.shared.session import create_db_session
 from src.storage.jobs import JobStore
 from src.helpers.settings import load_config
@@ -130,7 +130,9 @@ app = FastStream(broker)
 
 @broker.subscriber("agent")
 async def agent_handler(msg: JobMessages):
-    logger.info(f"Starting sentiment analysis for {msg.username}")
+    target = msg.username if msg.job_type == JobType.USER_SENTIMENT.value else f"r/{msg.subreddit}"
+    logger.info(f"Starting sentiment analysis for {target} (job_type={msg.job_type})")
+
     config = load_config()
     session = create_db_session()
 
@@ -139,22 +141,31 @@ async def agent_handler(msg: JobMessages):
 
     try:
         def run_analysis():
-            result = run_sentiment_analysis(config, session, msg.username, msg.question)
+            if msg.job_type == JobType.USER_SENTIMENT.value:
+                result = run_sentiment_analysis(config, session, msg.username, msg.question)
 
-            # Get final answer
-            answer = result["messages"][-1].content if result.get("messages") else ""
+                # Get final answer
+                answer = result["messages"][-1].content if result.get("messages") else ""
 
-            # Extract diagnostics and log everything
-            diagnostics = extract_diagnostics(result)
-            log_result(msg.username, answer, diagnostics)
+                # Extract diagnostics and log everything
+                diagnostics = extract_diagnostics(result)
+                log_result(msg.username, answer, diagnostics)
 
-            return answer
+                return answer
+            elif msg.job_type == JobType.SUBREDDIT_SENTIMENT.value:
+                # TODO: Implement subreddit sentiment analysis workflow
+                raise NotImplementedError(
+                    f"Subreddit sentiment analysis for r/{msg.subreddit} is not yet implemented. "
+                    "The agent workflow is deferred."
+                )
+            else:
+                raise ValueError(f"Unknown job_type: {msg.job_type}")
 
         answer = await asyncio.to_thread(run_analysis)
         job_store.update_status(msg.job_id, 'agent', JobStatus.COMPLETED, result=answer)
-        logger.info(f"Sentiment analysis complete for {msg.username}")
+        logger.info(f"Sentiment analysis complete for {target}")
     except Exception as e:
-        logger.error(f"Sentiment analysis failed for {msg.username}: {e}")
+        logger.error(f"Sentiment analysis failed for {target}: {e}")
         job_store.update_status(msg.job_id, 'agent', JobStatus.FAILED, error=str(e))
         raise
     finally:

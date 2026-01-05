@@ -83,6 +83,9 @@ class Job(Base):
     user_sentiment_job: Mapped["UserSentimentJob | None"] = relationship(
         default=None, init=False, lazy="joined"
     )
+    subreddit_sentiment_job: Mapped["SubredditSentimentJob | None"] = relationship(
+        default=None, init=False, lazy="joined"
+    )
 
 class UserSentimentJob(Base):
     __tablename__ = 'user_sentiment_jobs'
@@ -91,6 +94,16 @@ class UserSentimentJob(Base):
     username: Mapped[str]
     question: Mapped[str]
     service: Mapped[str] = mapped_column(default="pending")
+
+
+class SubredditSentimentJob(Base):
+    __tablename__ = 'subreddit_sentiment_jobs'
+
+    job_id: Mapped[str] = mapped_column(ForeignKey('jobs.id'), primary_key=True)
+    subreddit: Mapped[str]
+    question: Mapped[str]
+    service: Mapped[str] = mapped_column(default="pending")
+
 
 class UserContributionCacheStatus(Base):
     __tablename__ = 'user_contribution_cache_status'

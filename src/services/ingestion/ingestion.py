@@ -23,12 +23,6 @@ class IngestionService:
 
     async def sync_subreddit_contributions(self: "IngestionService", subreddit: str) -> dict:
         """Sync subreddit's submissions and comments from both APIs to Postgres.
-
-        Simplified compared to user sync:
-        - No parent chain walking needed (all comments are direct subreddit content)
-        - Comments already have subreddit field from API
-        - Uses SubredditContributionCacheStatus for cursors
-
         If historical source available: PullPush upserts (wins for content), Reddit inserts only.
         After both complete, reconciles is_deleted/is_archived flags.
         """

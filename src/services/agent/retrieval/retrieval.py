@@ -39,21 +39,28 @@ class Retriever:
 
     def _create_hybrid_retriever(
         self,
-        username: str,
+        username: str | None = None,
+        subreddit: str | None = None,
         start_time: int | None = None,
         end_time: int | None = None,
     ) -> EnsembleRetriever:
-        """Create a hybrid retriever for the given user with optional time filtering."""
+        """Create a hybrid retriever with optional user/subreddit and time filtering."""
         # Build filter for dense search
         # langchain_postgres requires $and for multiple conditions on same field
-        filter_conditions = [{"username": username}]
+        filter_conditions = []
+        if username:
+            filter_conditions.append({"username": {"$eq": username}})
+        if subreddit:
+            filter_conditions.append({"subreddit": {"$eq": subreddit}})
         if start_time is not None:
             filter_conditions.append({"created_utc": {"$gte": start_time}})
         if end_time is not None:
             filter_conditions.append({"created_utc": {"$lte": end_time}})
 
-        # Use $and if multiple conditions, otherwise simple filter
-        if len(filter_conditions) == 1:
+        # Use $and if multiple conditions, otherwise simple filter or None
+        if len(filter_conditions) == 0:
+            dense_filter = None
+        elif len(filter_conditions) == 1:
             dense_filter = filter_conditions[0]
         else:
             dense_filter = {"$and": filter_conditions}
@@ -64,6 +71,7 @@ class Retriever:
         sparse = PgSparseRetriever(
             session=self.session,
             username=username,
+            subreddit=subreddit,
             k=self.sparse_k,
             start_time=start_time,
             end_time=end_time,
@@ -77,17 +85,19 @@ class Retriever:
     def search(
         self,
         query: str,
-        username: str,
+        username: str | None = None,
+        subreddit: str | None = None,
         limit: int | None = None,
         start_time: int | None = None,
         end_time: int | None = None,
     ) -> list[CommentChain]:
         """
-        Search user's content using hybrid search (dense + sparse) with RRF fusion.
+        Search content using hybrid search (dense + sparse) with RRF fusion.
 
         Args:
             query: Search query text
             username: Filter results to this user's content
+            subreddit: Filter results to this subreddit's content
             limit: Max results to return
             start_time: Only include content created after this Unix timestamp
             end_time: Only include content created before this Unix timestamp
@@ -95,7 +105,7 @@ class Retriever:
         Returns:
             Fused and ranked search results
         """
-        hybrid = self._create_hybrid_retriever(username, start_time, end_time)
+        hybrid = self._create_hybrid_retriever(username, subreddit, start_time, end_time)
         docs = hybrid.invoke(query)
 
         logger.info(f"Hybrid retrieval result count: {len(docs)}")
@@ -111,23 +121,25 @@ class Retriever:
     def search_with_scores(
         self,
         query: str,
-        username: str,
+        username: str | None = None,
+        subreddit: str | None = None,
         start_time: int | None = None,
         end_time: int | None = None,
     ) -> list[tuple[CommentChain, float]]:
         """
-        Search user's content and return results with reranker scores.
+        Search content and return results with reranker scores.
 
         Args:
             query: Search query text
             username: Filter results to this user's content
+            subreddit: Filter results to this subreddit's content
             start_time: Only include content created after this Unix timestamp
             end_time: Only include content created before this Unix timestamp
 
         Returns:
             List of (CommentChain, score) tuples, sorted by score descending
         """
-        hybrid = self._create_hybrid_retriever(username, start_time, end_time)
+        hybrid = self._create_hybrid_retriever(username, subreddit, start_time, end_time)
         docs = hybrid.invoke(query)
 
         logger.info(f"Hybrid retrieval result count: {len(docs)}")

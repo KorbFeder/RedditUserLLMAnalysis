@@ -59,6 +59,13 @@ CREATE TABLE user_sentiment_jobs (
     service TEXT NOT NULL DEFAULT 'pending'
 );
 
+CREATE TABLE subreddit_sentiment_jobs (
+    job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    subreddit TEXT NOT NULL,
+    question TEXT NOT NULL,
+    service TEXT NOT NULL DEFAULT 'pending'
+);
+
 CREATE TABLE user_contribution_cache_status (
     username TEXT PRIMARY KEY,
     newest_submission_cursor BIGINT,

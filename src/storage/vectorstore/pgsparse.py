@@ -14,6 +14,7 @@ class PgSparseRetriever(BaseRetriever):
 
     session: Any = None
     username: str | None = None
+    subreddit: str | None = None
     k: int = 20
     start_time: int | None = None
     end_time: int | None = None
@@ -48,6 +49,10 @@ class PgSparseRetriever(BaseRetriever):
         if self.username:
             submission_query = submission_query.where(Submission.author == self.username)
             comment_query = comment_query.where(Comment.author == self.username)
+
+        if self.subreddit:
+            submission_query = submission_query.where(Submission.subreddit == self.subreddit)
+            comment_query = comment_query.where(Comment.subreddit == self.subreddit)
 
         # Time filtering
         if self.start_time:

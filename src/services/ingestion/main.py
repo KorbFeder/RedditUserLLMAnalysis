@@ -5,7 +5,7 @@ from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 
 from src.services.ingestion.ingestion import IngestionService
-from src.shared.job_messages import JobMessages, JobStatus
+from src.shared.job_messages import JobMessages, JobStatus, JobType
 from src.shared.session import create_db_session
 from src.storage.jobs import JobStore
 from src.helpers.settings import load_config
@@ -27,7 +27,9 @@ app = FastStream(broker)
 @broker.subscriber("ingestion")
 @broker.publisher("vectorizer")
 async def ingestion_handler(msg: JobMessages):
-    logger.info(f"Starting Ingestion for {msg.username}")
+    target = msg.username if msg.job_type == JobType.USER_SENTIMENT.value else f"r/{msg.subreddit}"
+    logger.info(f"Starting Ingestion for {target} (job_type={msg.job_type})")
+
     config = load_config()
     session = create_db_session()
 
@@ -38,11 +40,17 @@ async def ingestion_handler(msg: JobMessages):
     job_store = JobStore(session)
     job_store.update_status(msg.job_id, 'ingestion', JobStatus.ACTIVE)
     try:
-        await ingestion_service.sync_users_comment_chain(msg.username)
+        if msg.job_type == JobType.USER_SENTIMENT.value:
+            await ingestion_service.sync_users_comment_chain(msg.username)
+        elif msg.job_type == JobType.SUBREDDIT_SENTIMENT.value:
+            await ingestion_service.sync_subreddit_contributions(msg.subreddit)
+        else:
+            raise ValueError(f"Unknown job_type: {msg.job_type}")
+
         job_store.update_status(msg.job_id, 'ingestion', JobStatus.COMPLETED)
         return msg
     except Exception as e:
-        logger.error(f"Ingestion failed for {msg.username}: {e}")
+        logger.error(f"Ingestion failed for {target}: {e}")
         job_store.update_status(msg.job_id, 'ingestion', JobStatus.FAILED, error=str(e))
         raise
     finally:
