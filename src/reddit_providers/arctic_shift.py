@@ -3,9 +3,9 @@ import time
 import httpx
 import logging
 from typing import AsyncIterator
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.storage.models import Submission, Comment
+from src.reddit_providers.rate_limiter import api_retry
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +106,7 @@ class ArcticShiftClient:
                 ArcticShiftClient._rate_limit_remaining = None
                 ArcticShiftClient._rate_limit_reset = None
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type(httpx.HTTPError)
-    )
+    @api_retry
     async def api_request(self, endpoint: str, params: dict):
         await self._wait_for_rate_limit()
         response = await self.client.get(f"{self.API_URL}/{endpoint}", params=params)
@@ -192,6 +188,54 @@ class ArcticShiftClient:
             count += len(current_comments)
 
             logger.info(f"Fetched {count} comments from submission")
+            yield [self._to_comment(comment) for comment in current_comments]
+
+    async def stream_subreddit_submissions(self, subreddit: str) -> AsyncIterator[list[Submission]]:
+        """Stream all submissions from a subreddit, newest first."""
+        params = {
+            "subreddit": subreddit,
+            "limit": self.batch_size,
+            "sort": "desc"
+        }
+
+        logger.info(f"Fetching submissions from subreddit r/{subreddit} from Arctic Shift")
+        count = 0
+
+        while True:
+            response = await self.api_request('posts/search', params)
+            current_submissions = response.get('data', [])
+
+            if not current_submissions:
+                break
+
+            params["before"] = int(current_submissions[-1]["created_utc"])
+            count += len(current_submissions)
+
+            logger.info(f"Fetched {count} submissions from subreddit")
+            yield [self._to_submission(submission) for submission in current_submissions]
+
+    async def stream_subreddit_comments(self, subreddit: str) -> AsyncIterator[list[Comment]]:
+        """Stream all comments from a subreddit, newest first."""
+        params = {
+            "subreddit": subreddit,
+            "limit": self.batch_size,
+            "sort": "desc"
+        }
+
+        logger.info(f"Fetching comments from subreddit r/{subreddit} from Arctic Shift")
+        count = 0
+
+        while True:
+            response = await self.api_request('comments/search', params)
+            current_comments = response.get('data', [])
+
+            if not current_comments:
+                break
+
+            params["before"] = int(current_comments[-1]["created_utc"])
+            count += len(current_comments)
+
+            logger.info(f"Fetched {count} comments from subreddit")
             yield [self._to_comment(comment) for comment in current_comments]
 
     async def fetch_comment(self, comment_id: str) -> Comment | None:
@@ -283,6 +327,7 @@ class ArcticShiftClient:
             submission_id=self._strip_prefix(comment.get('link_id')),
             parent_id=self._strip_prefix(comment.get('parent_id')),
             author=comment.get('author'),
+            subreddit=comment.get('subreddit'),
             body=comment.get('body'),
             score=comment.get('score'),
             ups=comment.get('ups'),

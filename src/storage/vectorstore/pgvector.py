@@ -67,6 +67,7 @@ class VectorStoreManager:
         content_ids: list[str],
         content_types: list[ContentType],
         username: str,
+        subreddit: str = "",
     ) -> None:
         """Record that content has been embedded using bulk upsert."""
         if not content_ids:
@@ -78,6 +79,7 @@ class VectorStoreManager:
                 "collection_name": self.table_name,
                 "content_type": ctype.value,
                 "username": username,
+                "subreddit": subreddit,
             }
             for cid, ctype in zip(content_ids, content_types)
         ]
@@ -96,6 +98,7 @@ class VectorStoreManager:
         texts: list[str],
         timestamps: list[int | None],
         username: str | None = None,
+        subreddit: str | None = None,
     ) -> dict:
         """Add documents to the vector store with deduplication.
 
@@ -105,6 +108,7 @@ class VectorStoreManager:
             texts: Document texts to embed
             timestamps: Unix timestamps (created_utc) for each document
             username: Username who authored the content
+            subreddit: Subreddit the content belongs to
         """
         if not texts:
             return {"num_added": 0, "num_skipped": 0}
@@ -135,6 +139,7 @@ class VectorStoreManager:
                 "content_id": cid,
                 "content_type": ctype.value,
                 "username": username or "",
+                "subreddit": subreddit or "",
                 "created_utc": ts or 0,
             }
             for cid, ctype, ts in zip(new_ids, new_types, new_timestamps)
@@ -148,7 +153,7 @@ class VectorStoreManager:
         )
 
         # Record successful embeddings
-        self._record_embeddings(new_ids, new_types, username or "")
+        self._record_embeddings(new_ids, new_types, username or "", subreddit or "")
 
         logger.info(
             f"Embedding complete: added={len(new_ids)}, skipped={num_skipped}"

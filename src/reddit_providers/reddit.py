@@ -5,11 +5,12 @@ import base64
 import time
 from typing import AsyncIterator
 import logging
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.storage.models import Submission, Comment
+from src.reddit_providers.rate_limiter import api_retry
 
 logger = logging.getLogger(__name__)
+
 
 class AsyncRateLimiter:
     """Shared rate limiter that ensures minimum delay between requests."""
@@ -34,13 +35,6 @@ class AsyncRateLimiter:
     def update_delay(self, new_delay: float):
         """Update the minimum delay (e.g., after authentication)."""
         self.min_delay = new_delay
-
-
-class RedditRateLimitException(Exception):
-    """Raised when rate limited - lets caller decide how to handle (sleep, reschedule, etc.)"""
-    def __init__(self, retry_after: float):
-        self.retry_after = retry_after
-        super().__init__(f"Rate limited. Retry after {retry_after}s")
 
 
 class RedditClient:
@@ -241,11 +235,7 @@ class RedditClient:
             created_utc=int(comment['created_utc']) if comment.get('created_utc') is not None else None
         )
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError))
-    )
+    @api_retry
     async def _get(self, endpoint: str, params: dict = None, _retry: bool = False) -> dict:
         await self._ensure_auth()
 
@@ -264,15 +254,10 @@ class RedditClient:
             await self._authenticate()
             return await self._get(endpoint, params, _retry=True)
 
-        # Handle 429 - rate limited, raise exception for caller to handle
-        if response.status_code == 429:
-            reset = response.headers.get("X-Ratelimit-Reset")
-            retry_after = float(reset) if reset else 60.0
-            raise RedditRateLimitException(retry_after)
-
+        # Let api_retry handle 429 and 5xx errors
         response.raise_for_status()
 
-        # Additional backoff if running low on quota
+        # Proactive backoff if running low on quota
         remaining = response.headers.get("X-Ratelimit-Remaining")
         reset = response.headers.get("X-Ratelimit-Reset")
 

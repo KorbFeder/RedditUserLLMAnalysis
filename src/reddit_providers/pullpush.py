@@ -1,10 +1,9 @@
 import httpx
 import logging
 from typing import AsyncIterator
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.storage.models import Submission, Comment
-from src.reddit_providers.rate_limiter import AsyncRateLimiter
+from src.reddit_providers.rate_limiter import AsyncRateLimiter, api_retry
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +30,7 @@ class PullPushClient:
     def source_name(self) -> str:
         return "pushpull"
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type(httpx.HTTPError)
-    )
+    @api_retry
     async def api_request(self, endpoint: str, params: dict):
         await self._rate_limiter.acquire()  # Shared rate limiting
         response = await self.client.get(f"{self.API_URL}/{endpoint}/", params=params)
@@ -112,6 +107,56 @@ class PullPushClient:
             count += len(current_comments)
 
             logger.info(f"Fetched {count} comments from a submission")
+            yield [self._to_comment(comment) for comment in current_comments]
+
+    async def stream_subreddit_submissions(self: "PullPushClient", subreddit: str) -> AsyncIterator[list[Submission]]:
+        """Stream all submissions from a subreddit, newest first."""
+        params = {
+            "subreddit": subreddit,
+            "size": self.batch_size,
+            "sort": "desc",
+            "sort_type": "created_utc"
+        }
+
+        logger.info(f"Fetching submissions from subreddit r/{subreddit}")
+        count = 0
+
+        while True:
+            response = await self.api_request('submission', params)
+            current_submissions = response.get('data', [])
+
+            if not current_submissions:
+                break
+
+            params["before"] = int(current_submissions[-1]["created_utc"]) - 1
+            count += len(current_submissions)
+
+            logger.info(f"Fetched {count} submissions from subreddit")
+            yield [self._to_submission(submission) for submission in current_submissions]
+
+    async def stream_subreddit_comments(self: "PullPushClient", subreddit: str) -> AsyncIterator[list[Comment]]:
+        """Stream all comments from a subreddit, newest first."""
+        params = {
+            "subreddit": subreddit,
+            "size": self.batch_size,
+            "sort": "desc",
+            "sort_type": "created_utc"
+        }
+
+        logger.info(f"Fetching comments from subreddit r/{subreddit}")
+        count = 0
+
+        while True:
+            response = await self.api_request('comment', params)
+            current_comments = response.get('data', [])
+
+            if not current_comments:
+                break
+
+            params["before"] = int(current_comments[-1]["created_utc"]) - 1
+            count += len(current_comments)
+
+            logger.info(f"Fetched {count} comments from subreddit")
             yield [self._to_comment(comment) for comment in current_comments]
 
     async def fetch_comment(self: "PullPushClient", comment_id: str) -> Comment | None:
@@ -200,6 +245,7 @@ class PullPushClient:
             submission_id=self._strip_prefix(comment.get('link_id')),
             parent_id=self._strip_prefix(comment.get('parent_id')),
             author=comment.get('author'),
+            subreddit=comment.get('subreddit'),
             body=comment.get('body'),
             score=comment.get('score'),
             ups=comment.get('ups'),

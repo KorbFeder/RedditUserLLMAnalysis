@@ -116,3 +116,94 @@ class Vectorizer:
         )
 
         return totals
+
+    def sync_embeddings_for_subreddit(self: "Vectorizer", subreddit: str) -> dict:
+        """Sync embeddings for a subreddit. Automatically skips already-indexed content."""
+        logger.info(f"Starting embedding sync for subreddit: r/{subreddit}")
+
+        # Fetch all subreddit content from database
+        submissions: list[Submission] = self.store.get_subreddit_submissions(subreddit)
+        comments: list[Comment] = self.store.get_subreddit_comments(subreddit)
+
+        logger.info(f"Found {len(submissions)} submissions, {len(comments)} comments")
+
+        if not submissions and not comments:
+            logger.info("No content to process")
+            return {"num_added": 0, "num_skipped": 0, "num_updated": 0, "num_deleted": 0}
+
+        # Fetch parent context for comments
+        submission_ids_for_comments = [c.submission_id for c in comments if c.submission_id]
+        parent_ids = [c.parent_id for c in comments if c.parent_id]
+
+        submissions_by_id = {
+            s.id: s for s in self.store.get_submissions(submission_ids_for_comments)
+        }
+        # Add the subreddit submissions too
+        submissions_by_id.update({s.id: s for s in submissions})
+
+        parents_by_id = {c.id: c for c in self.store.get_comments(parent_ids)}
+
+        # Build documents for all content
+        docs = []
+        content_types = []
+        ids = []
+        timestamps = []
+
+        for comment in comments:
+            submission = submissions_by_id.get(comment.submission_id)
+            if not submission:
+                logger.warning(
+                    f"Missing submission {comment.submission_id} for comment {comment.id}"
+                )
+                continue
+            parent = parents_by_id.get(comment.parent_id)
+            doc = self.small_to_large.comment(submission, comment, parent)
+
+            ids.append(comment.id)
+            content_types.append(ContentType.COMMENT)
+            docs.append(doc)
+            timestamps.append(comment.created_utc)
+
+        for submission in submissions:
+            doc = self.small_to_large.submission(submission)
+
+            ids.append(submission.id)
+            content_types.append(ContentType.SUBMISSION)
+            docs.append(doc)
+            timestamps.append(submission.created_utc)
+
+        # Index all documents - the indexing API handles deduplication automatically
+        total_items = len(ids)
+        batch_size = self.config.get("embedding", {}).get("batch_size", 100)
+        total_batches = (total_items + batch_size - 1) // batch_size
+
+        logger.info(f"Processing {total_items} documents in {total_batches} batches")
+
+        totals = {"num_added": 0, "num_skipped": 0, "num_updated": 0, "num_deleted": 0}
+
+        for i in range(0, total_items, batch_size):
+            batch_num = i // batch_size + 1
+            batch_ids = ids[i : i + batch_size]
+            batch_types = content_types[i : i + batch_size]
+            batch_docs = docs[i : i + batch_size]
+            batch_timestamps = timestamps[i : i + batch_size]
+
+            result = self.vector_store.add(
+                batch_ids, batch_types, batch_docs, batch_timestamps, subreddit=subreddit
+            )
+
+            # Accumulate totals
+            for key in totals:
+                totals[key] += result.get(key, 0)
+
+            logger.info(
+                f"Batch {batch_num}/{total_batches}: "
+                f"added={result['num_added']}, skipped={result['num_skipped']}"
+            )
+
+        logger.info(
+            f"Embedding sync complete for subreddit: r/{subreddit} - "
+            f"added={totals['num_added']}, skipped={totals['num_skipped']}"
+        )
+
+        return totals

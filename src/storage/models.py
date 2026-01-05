@@ -46,6 +46,7 @@ class Comment(Base):
     submission_id: Mapped[str | None] = mapped_column(default=None)
     parent_id: Mapped[str | None] = mapped_column(default=None)
     author: Mapped[str | None] = mapped_column(default=None)
+    subreddit: Mapped[str | None] = mapped_column(default=None)
     body: Mapped[str | None] = mapped_column(default=None)
     score: Mapped[int | None] = mapped_column(default=None)
     ups: Mapped[int | None] = mapped_column(default=None)
@@ -98,6 +99,13 @@ class UserContributionCacheStatus(Base):
     newest_comment_cursor: Mapped[int | None] = mapped_column(default=None)
 
 
+class SubredditContributionCacheStatus(Base):
+    __tablename__ = 'subreddit_contribution_cache_status'
+    subreddit: Mapped[str] = mapped_column(primary_key=True)
+    newest_submission_cursor: Mapped[int | None] = mapped_column(default=None)
+    newest_comment_cursor: Mapped[int | None] = mapped_column(default=None)
+
+
 class EmbeddingRecord(Base):
     """Tracks which content has been embedded in each vector collection."""
     __tablename__ = 'embedding_records'
@@ -106,4 +114,5 @@ class EmbeddingRecord(Base):
     collection_name: Mapped[str] = mapped_column(primary_key=True)
     content_type: Mapped[str]  # 'submission' or 'comment'
     username: Mapped[str]
+    subreddit: Mapped[str] = mapped_column(default="")
     embedded_at: Mapped[datetime] = mapped_column(default=func.now(), init=False)

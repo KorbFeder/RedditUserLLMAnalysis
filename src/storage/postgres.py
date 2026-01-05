@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import func
 
-from src.storage.models import Submission, Comment, UserContributionCacheStatus
+from src.storage.models import Submission, Comment, UserContributionCacheStatus, SubredditContributionCacheStatus
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +102,45 @@ class PostgresStore:
         )
         return self.session.scalars(query).all()
 
+    def get_subreddit_submission_ids(self: "PostgresStore", subreddit: str) -> list[str]:
+        query = (
+            select(Submission.id)
+            .where(Submission.subreddit == subreddit)
+            .order_by(Submission.created_utc.desc())
+        )
+        return self.session.scalars(query).all()
+
+    def get_subreddit_submissions(self: "PostgresStore", subreddit: str) -> list[Submission]:
+        query = (
+            select(Submission)
+            .where(Submission.subreddit == subreddit)
+            .order_by(Submission.created_utc.desc())
+        )
+        return self.session.scalars(query).all()
+
+    def get_subreddit_comments(self: "PostgresStore", subreddit: str) -> list[Comment]:
+        query = (
+            select(Comment)
+            .where(Comment.subreddit == subreddit)
+            .order_by(Comment.created_utc.desc())
+        )
+        return self.session.scalars(query).all()
+
     def get_user_cache_status(self: "PostgresStore", username: str):
         return self.session.get(UserContributionCacheStatus, username)
+
+    def get_subreddit_cache_status(self: "PostgresStore", subreddit: str) -> SubredditContributionCacheStatus | None:
+        return self.session.get(SubredditContributionCacheStatus, subreddit)
+
+    def upsert_subreddit_cache_status(self: "PostgresStore", status: SubredditContributionCacheStatus) -> None:
+        """Upsert subreddit cache status record."""
+        try:
+            self.session.merge(status)
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to upsert subreddit cache status for {status.subreddit}: {e}")
+            raise
 
     def submissions_exist(self, ids: list[str]) -> set[str]:
         if not ids:
@@ -175,6 +212,7 @@ class PostgresStore:
                     'is_deleted': insert(Comment).excluded.is_deleted,
                     'is_archived': insert(Comment).excluded.is_archived,
                     'fetched_at': insert(Comment).excluded.fetched_at,
+                    'subreddit': insert(Comment).excluded.subreddit,
                 }
             )
             self.session.execute(stmt)
