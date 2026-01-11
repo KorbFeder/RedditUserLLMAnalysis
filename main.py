@@ -5,7 +5,7 @@ import logging
 from dotenv import load_dotenv
 from faststream.rabbit import RabbitBroker
 
-from src.shared.job_messages import JobMessages
+from src.shared.job_messages import JobMessages, JobType
 from src.shared.session import create_db_session
 from src.storage.jobs import JobStore
 
@@ -20,8 +20,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def send_sentiment_job(username: str, question: str):
-    """Create a job and send it to the ingestion queue."""
+async def send_user_sentiment_job(username: str, question: str):
+    """Create a user sentiment job and send it to the ingestion queue."""
     job_id = str(uuid.uuid4())
 
     # Create job in database
@@ -33,17 +33,48 @@ async def send_sentiment_job(username: str, question: str):
     # Send to ingestion queue
     broker = RabbitBroker(os.getenv("RABBITMQ_URL"))
     async with broker:
-        msg = JobMessages(job_id=job_id, username=username, question=question)
+        msg = JobMessages(
+            job_id=job_id,
+            job_type=JobType.USER_SENTIMENT.value,
+            question=question,
+            username=username
+        )
         await broker.publish(msg, queue="ingestion")
         logger.info(f"Sent job {job_id} for user: {username}")
 
     return job_id
 
 
+async def send_subreddit_sentiment_job(subreddit: str, question: str):
+    """Create a subreddit sentiment job and send it to the ingestion queue."""
+    job_id = str(uuid.uuid4())
+
+    # Create job in database
+    session = create_db_session()
+    job_store = JobStore(session)
+    job_store.create_subreddit_sentiment_job(job_id, subreddit, question)
+    session.close()
+
+    # Send to ingestion queue
+    broker = RabbitBroker(os.getenv("RABBITMQ_URL"))
+    async with broker:
+        msg = JobMessages(
+            job_id=job_id,
+            job_type=JobType.SUBREDDIT_SENTIMENT.value,
+            question=question,
+            subreddit=subreddit
+        )
+        await broker.publish(msg, queue="ingestion")
+        logger.info(f"Sent job {job_id} for subreddit: r/{subreddit}")
+
+    return job_id
+
+
 if __name__ == "__main__":
-    job_id = asyncio.run(send_sentiment_job(
-        username="swintec",
-        question="What does the user think about Omicron/Highwinds?"
+    # Test subreddit sentiment analysis
+    job_id = asyncio.run(send_subreddit_sentiment_job(
+        subreddit="usenet",
+        question="What do they think about Omicron/Highwinds?"
     ))
     print(f"Job created: {job_id}")
 

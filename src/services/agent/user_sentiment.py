@@ -219,8 +219,8 @@ def build_graph():
     return graph.compile()
 
 
-def run_sentiment_analysis(config: dict, session: Session, username: str, query: str) -> dict:
-    """Run sentiment analysis and return full result state.
+def run_user_sentiment_analysis(config: dict, session: Session, username: str, query: str) -> dict:
+    """Run user sentiment analysis and return full result state.
 
     Returns:
         dict with keys: messages, username, query, time_intervals, worker_results

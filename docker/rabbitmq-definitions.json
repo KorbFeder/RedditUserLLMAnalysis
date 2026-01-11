@@ -1,90 +1,21 @@
 {
-  "exchanges": [
+  "vhosts": [
+    {"name": "/"}
+  ],
+  "users": [
     {
-      "name": "dlx",
-      "vhost": "/",
-      "type": "direct",
-      "durable": true,
-      "auto_delete": false
+      "name": "guest",
+      "password": "guest",
+      "tags": ["administrator"]
     }
   ],
-  "queues": [
+  "permissions": [
     {
-      "name": "ingestion",
+      "user": "guest",
       "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "dlq.ingestion"
-      }
-    },
-    {
-      "name": "vectorizer",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "dlq.vectorizer"
-      }
-    },
-    {
-      "name": "agent",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "dlq.agent"
-      }
-    },
-    {
-      "name": "dlq.ingestion",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {}
-    },
-    {
-      "name": "dlq.vectorizer",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {}
-    },
-    {
-      "name": "dlq.agent",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {}
-    }
-  ],
-  "bindings": [
-    {
-      "source": "dlx",
-      "vhost": "/",
-      "destination": "dlq.ingestion",
-      "destination_type": "queue",
-      "routing_key": "dlq.ingestion",
-      "arguments": {}
-    },
-    {
-      "source": "dlx",
-      "vhost": "/",
-      "destination": "dlq.vectorizer",
-      "destination_type": "queue",
-      "routing_key": "dlq.vectorizer",
-      "arguments": {}
-    },
-    {
-      "source": "dlx",
-      "vhost": "/",
-      "destination": "dlq.agent",
-      "destination_type": "queue",
-      "routing_key": "dlq.agent",
-      "arguments": {}
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
     }
   ]
 }

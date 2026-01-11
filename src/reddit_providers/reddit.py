@@ -147,8 +147,58 @@ class RedditClient:
             if not after:
                 break
 
-        logger.info(f"Fetched {count} comments for user") 
-    
+        logger.info(f"Fetched {count} comments for user")
+
+    async def stream_subreddit_submissions(self: "RedditClient", subreddit: str) -> AsyncIterator[list[Submission]]:
+        """Fetch subreddit submissions using sort=new for recent content."""
+        after = None
+        count = 0
+
+        while True:
+            params = {"limit": 100, "sort": "new"}
+            if after:
+                params["after"] = after
+
+            response = await self._get(f"r/{subreddit}/new", params)
+            children = response["data"]["children"]
+
+            if not children:
+                break
+
+            count += len(children)
+            yield [self._to_submission(s["data"]) for s in children]
+
+            after = response["data"].get("after")
+            if not after:
+                break
+
+        logger.info(f"Fetched {count} submissions from subreddit r/{subreddit}")
+
+    async def stream_subreddit_comments(self: "RedditClient", subreddit: str) -> AsyncIterator[list[Comment]]:
+        """Fetch subreddit comments from /r/{subreddit}/comments endpoint."""
+        after = None
+        count = 0
+
+        while True:
+            params = {"limit": 100}
+            if after:
+                params["after"] = after
+
+            response = await self._get(f"r/{subreddit}/comments", params)
+            children = response["data"]["children"]
+
+            if not children:
+                break
+
+            count += len(children)
+            yield [self._to_comment(c["data"]) for c in children if c["kind"] == "t1"]
+
+            after = response["data"].get("after")
+            if not after:
+                break
+
+        logger.info(f"Fetched {count} comments from subreddit r/{subreddit}")
+
     async def fetch_submissions(self: "RedditClient", ids: list[str]) -> list[Submission]:
         """Fetch submissions by ID (no prefix needed)."""
         if not ids:

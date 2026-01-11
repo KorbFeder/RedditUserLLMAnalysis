@@ -10,7 +10,8 @@ from src.shared.job_messages import JobMessages, JobStatus, JobType
 from src.shared.session import create_db_session
 from src.storage.jobs import JobStore
 from src.helpers.settings import load_config
-from src.services.agent.sentiment import run_sentiment_analysis
+from src.services.agent.user_sentiment import run_user_sentiment_analysis
+from src.services.agent.subreddit_sentiment import run_subreddit_sentiment_analysis
 
 
 def parse_search_results(content: str) -> list[dict]:
@@ -97,7 +98,7 @@ def log_result(username: str, answer: str, diagnostics: dict):
     logger.info(f"Tool calls: {diagnostics['tool_calls_count']}")
 
     # Log search tool calls with results
-    search_calls = [tc for tc in diagnostics['tool_calls'] if tc['tool'] == 'search_user_content']
+    search_calls = [tc for tc in diagnostics['tool_calls'] if tc['tool'] in ('search_user_content', 'search_subreddit_content')]
     if search_calls:
         logger.info("-" * 40)
         logger.info("SEARCH QUERIES & RESULTS:")
@@ -142,7 +143,7 @@ async def agent_handler(msg: JobMessages):
     try:
         def run_analysis():
             if msg.job_type == JobType.USER_SENTIMENT.value:
-                result = run_sentiment_analysis(config, session, msg.username, msg.question)
+                result = run_user_sentiment_analysis(config, session, msg.username, msg.question)
 
                 # Get final answer
                 answer = result["messages"][-1].content if result.get("messages") else ""
@@ -153,11 +154,16 @@ async def agent_handler(msg: JobMessages):
 
                 return answer
             elif msg.job_type == JobType.SUBREDDIT_SENTIMENT.value:
-                # TODO: Implement subreddit sentiment analysis workflow
-                raise NotImplementedError(
-                    f"Subreddit sentiment analysis for r/{msg.subreddit} is not yet implemented. "
-                    "The agent workflow is deferred."
-                )
+                result = run_subreddit_sentiment_analysis(config, session, msg.subreddit, msg.question)
+
+                # Get final answer
+                answer = result["messages"][-1].content if result.get("messages") else ""
+
+                # Extract diagnostics and log everything
+                diagnostics = extract_diagnostics(result)
+                log_result(f"r/{msg.subreddit}", answer, diagnostics)
+
+                return answer
             else:
                 raise ValueError(f"Unknown job_type: {msg.job_type}")
 

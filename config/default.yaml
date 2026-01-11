@@ -40,7 +40,7 @@ search:
 agent:
   provider: "openrouter"
   main_model_name: "nex-agi/deepseek-v3.1-nex-n1:free"
-  n_workers: 4
+  n_workers: 2
 
 reddit_api:
   current_source: "reddit"

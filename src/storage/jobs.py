@@ -3,7 +3,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from src.storage.models import Job, UserSentimentJob
+from src.storage.models import Job, UserSentimentJob, SubredditSentimentJob
 from src.shared.job_messages import JobStatus
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,15 @@ class JobStore:
         user_job = UserSentimentJob(job_id=job_id, username=username, question=question)
         self.session.add(job)
         self.session.add(user_job)
+        self.session.commit()
+        return job
+
+    def create_subreddit_sentiment_job(self, job_id: str, subreddit: str, question: str) -> Job:
+        """Create a subreddit sentiment analysis job with its parameters."""
+        job = Job(id=job_id, job_type="subreddit_sentiment")
+        subreddit_job = SubredditSentimentJob(job_id=job_id, subreddit=subreddit, question=question)
+        self.session.add(job)
+        self.session.add(subreddit_job)
         self.session.commit()
         return job
 
@@ -43,9 +52,11 @@ class JobStore:
         if error is not None:
             job.error = error
 
-        # Update service on UserSentimentJob
+        # Update service on job details
         if job.user_sentiment_job:
             job.user_sentiment_job.service = service
+        if job.subreddit_sentiment_job:
+            job.subreddit_sentiment_job.service = service
 
         self.session.commit()
         logger.info(f"Job {job_id} service={service} status={status.value}")
