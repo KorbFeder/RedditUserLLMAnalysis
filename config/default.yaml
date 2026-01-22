@@ -1,6 +1,6 @@
 embedding:
-  active_provider: "fastembed" 
-  active_model: "BAAI/bge-small-en-v1.5"
+  active_provider: "mistral" 
+  active_model: "mistral-embed"
   batch_size: 32
 
   providers:
@@ -21,6 +21,12 @@ embedding:
         query_prefix: ""
       "gemini-embedding-001":
         dimensions: 3072
+        document_prefix: ""
+        query_prefix: ""
+
+    mistral:
+      "mistral-embed":
+        dimensions: 1024
         document_prefix: ""
         query_prefix: ""
 

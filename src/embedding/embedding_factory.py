@@ -6,6 +6,7 @@ import logging
 from langchain_core.embeddings import Embeddings
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_mistralai import MistralAIEmbeddings
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -139,6 +140,9 @@ def get_embeddings(config: dict) -> Embeddings:
                 model=f"models/{model}",
                 task_type="retrieval_document",
             )
+            return RetryingEmbeddings(base)
+        case "mistral":
+            base = MistralAIEmbeddings(model=model)
             return RetryingEmbeddings(base)
         case _:
             raise ValueError(f"Unknown embedding provider: {provider}")
