@@ -142,7 +142,9 @@ def get_embeddings(config: dict) -> Embeddings:
             )
             return RetryingEmbeddings(base)
         case "mistral":
-            base = MistralAIEmbeddings(model=model)
+            base = MistralAIEmbeddings(
+                model=model, 
+            )
             return RetryingEmbeddings(base)
         case _:
             raise ValueError(f"Unknown embedding provider: {provider}")
