@@ -150,10 +150,11 @@ def get_embeddings(config: dict) -> Embeddings:
             raise ValueError(f"Unknown embedding provider: {provider}")
 
 
-def get_embedding_info(config: dict) -> tuple[str, int]:
-    """Returns (model_name, dimensions) from config."""
+def get_embedding_info(config: dict) -> tuple[str, int, int | None]:
+    """Returns (model_name, dimensions, max_text_length) from config."""
     embedding_config = config["embedding"]
     provider = embedding_config["active_provider"]
     model = embedding_config["active_model"]
     model_config = embedding_config["providers"][provider][model]
-    return model, model_config["dimensions"]
+    max_text_length = model_config.get("max_text_length")  # None if not set
+    return model, model_config["dimensions"], max_text_length

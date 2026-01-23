@@ -18,7 +18,7 @@ class Vectorizer:
         self.config = config
 
         embeddings = get_embeddings(config)
-        model_name, dimensions = get_embedding_info(config)
+        model_name, dimensions, max_text_length = get_embedding_info(config)
 
         self.store = PostgresStore(self.session)
         self.vector_store = VectorStoreManager(
@@ -26,6 +26,7 @@ class Vectorizer:
             model_name=model_name,
             dimensions=dimensions,
             session=session,
+            max_text_length=max_text_length,
         )
         self.small_to_large = DocumentBuilder()
 

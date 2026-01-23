@@ -19,13 +19,14 @@ class Retriever:
         self.config = config
 
         embeddings = get_embeddings(config)
-        model_name, dimensions = get_embedding_info(config)
+        model_name, dimensions, max_text_length = get_embedding_info(config)
 
         self.vector_store = VectorStoreManager(
             embeddings=embeddings,
             model_name=model_name,
             dimensions=dimensions,
             session=session,
+            max_text_length=max_text_length,
         )
         self.store = PostgresStore(session)
         self.reranker = Reranker(config)

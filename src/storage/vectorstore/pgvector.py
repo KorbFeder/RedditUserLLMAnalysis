@@ -22,11 +22,13 @@ class VectorStoreManager:
         model_name: str,
         dimensions: int,
         session: Session,
+        max_text_length: int | None = None,
     ):
         self.embeddings = embeddings
         self.model_name = model_name
         self.dimensions = dimensions
         self.session = session
+        self.max_text_length = max_text_length
 
         # Get database URL and convert to psycopg format
         db_url = os.getenv("DATABASE_URL")
@@ -134,6 +136,15 @@ class VectorStoreManager:
         new_types = [item[1] for item in new_items]
         new_texts = [item[2] for item in new_items]
         new_timestamps = [item[3] for item in new_items]
+
+        # Truncate texts that are too long for the embedding API (if limit is set)
+        if self.max_text_length:
+            for i, text in enumerate(new_texts):
+                if len(text) > self.max_text_length:
+                    logger.warning(
+                        f"Truncating text id={new_ids[i]} from {len(text)} to {self.max_text_length} chars"
+                    )
+                    new_texts[i] = text[:self.max_text_length]
         metadatas = [
             {
                 "content_id": cid,

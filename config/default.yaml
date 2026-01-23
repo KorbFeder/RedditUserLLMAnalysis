@@ -29,6 +29,7 @@ embedding:
         dimensions: 1024
         document_prefix: ""
         query_prefix: ""
+        max_text_length: 16000  # 8192 token limit
 
 search:
   dense:
@@ -45,7 +46,7 @@ search:
   
 agent:
   provider: "openrouter"
-  main_model_name: "nex-agi/deepseek-v3.1-nex-n1:free"
+  main_model_name: "qwen/qwen3-coder:free"
   n_workers: 2
 
 reddit_api:

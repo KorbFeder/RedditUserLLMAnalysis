@@ -32,7 +32,7 @@ def fall_back_model(model_name: str):
         return model_name
 
     # if the model is not anymore in the API chose a fallback model
-    free_models = [model for model in models if all(float(model["pricing"][key]) == 0 for key in ["prompt", "completion", "request"])]
+    free_models = [model for model in models if all(float(model["pricing"].get(key, 0)) == 0 for key in ["prompt", "completion"])]
     best_free_models = sorted(free_models, key=lambda x: x["context_length"] or 0, reverse=True) if free_models else None
 
     new_model_name = best_free_models[0]["id"]
